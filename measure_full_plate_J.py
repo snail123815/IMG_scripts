@@ -4,9 +4,9 @@ import os
 from time import strftime
 
 # Take care of total path and numbers!!!!!!!
-working_path = 'e:/20170524_sco1839'
-max_img_num = 78
-path_name = working_path.split('/')[1]
+working_path = 'F:/20170612_sco1839'
+max_img_num = 98
+path_name = working_path.split('/')[-1]
 target_path = 'd:/WORKs/Project_Sporulation/Pictures/%s_scanner'%path_name
 
 os.chdir(working_path)
@@ -18,11 +18,11 @@ IJ.run("Set Measurements...", "mean redirect=None decimal=4")
 IJ.run("Clear Results")
 
 
-
+#
 ## change file name
 #for i in range(1,max_img_num+1):
 #	try:
-#		filename = 'im__%s.jpg'%str(i).zfill(2)
+#		filename = 'im_%s.jpg'%str(i).zfill(2)
 #		newname = 'img_%s.jpg'%str(i).zfill(3)
 #		os.rename(filename, newname)
 #	except:
@@ -30,18 +30,17 @@ IJ.run("Clear Results")
 #		break
 
 
-
 # Get positions for measurment into a list of 4 number lists
 macro_text = '''
-makeOval(1000, 984, 1648, 1648);
-makeOval(3128, 928, 1648, 1648);
-makeOval(264, 3016, 1648, 1648);
-makeOval(2400, 2968, 1648, 1648);
-makeOval(992, 5024, 1648, 1648);
-makeOval(3136, 5016, 1648, 1648);
-op8-op11-cm-del-wt1-wt2
+makeOval(1072, 984, 1568, 1568);
+makeOval(3216, 960, 1568, 1568);
+makeOval(360, 3008, 1568, 1568);
+makeOval(2536, 2976, 1568, 1568);
+makeOval(1056, 5072, 1568, 1568);
+makeOval(3168, 5048, 1568, 1568);
+op8-wt2-del-del-cm-wt2
 '''
-plates = {'UL':'OP1839CR8','UR':'OP1839CR11','ML':'CM1839','MR':'KO1839','BL':'WT_1','BR':'WT_2'}
+plates = {'UL':'OP1839CR8','UR':'WT_1','ML':'KO1839_1','MR':'KO1839_2','BL':'CM1839','BR':'WT_2'}
 results = {plates['UL']:[], plates['UR']:[], plates['ML']:[], plates['MR']:[], plates['BL']:[], plates['BR']:[]}
 
 alltxt = macro_text.split(';')
