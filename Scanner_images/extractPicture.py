@@ -29,7 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 path = input('Please specify the directory:\n').strip()
 
 
-def position(a, b, size):
+def positionCorner(a, b, size):
     return a, b, a + size, b + size
 
 
@@ -40,15 +40,15 @@ def creatFolders(path):
             os.mkdir(os.path.join(path, folder))
 
 
-print('Creating folders')
+print('Creating folders...')
 creatFolders(path)
-
-boxDict = {'TL': position(420, 350, 1040),
-           'TR': position(1460, 350, 1040),
-           'ML': position(90, 1390, 1040),
-           'MR': position(1100, 1390, 1040),
-           'BL': position(420, 2400, 1040),
-           'BR': position(1460, 2400, 1040)}
+Print('Cropping...')
+boxDict = {'TL': positionCorner(420, 350, 1040),
+           'TR': positionCorner(1460, 350, 1040),
+           'ML': positionCorner(90, 1390, 1040),
+           'MR': positionCorner(1100, 1390, 1040),
+           'BL': positionCorner(420, 2400, 1040),
+           'BR': positionCorner(1460, 2400, 1040)}
 
 
 fileList = sorted(list(file for file in os.listdir(path) if file.endswith('.jpg')))
@@ -74,11 +74,10 @@ def cropping(filePath):
     return True
 
 
-# crops = {}
 threadPool = ThreadPoolExecutor(max_workers=8)
 for i, file in enumerate(fileList):
     filePath = os.path.join(path, file)
-    future = threadPool.submit(cropping, filePath)
+    threadPool.submit(cropping, filePath)
 
 threadPool.shutdown(wait=True)
 print('Finished!')
