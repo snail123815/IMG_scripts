@@ -1,3 +1,7 @@
-*.ipynb
-.DS_Store
+__pycache__/
+NewTool.py
 .ipynb_checkpoints/
+.DS_Store
+.ipynb
+test.py
+Bio_practice/
