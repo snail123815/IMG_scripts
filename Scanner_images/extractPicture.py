@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 import platform
 import os
+from changeName import getScanTime
 discriptionText_extractPicture = '''
     Depends on Pillow (PIL Fork) https://pillow.readthedocs.io/en/latest/
 
@@ -34,9 +35,9 @@ discriptionText_extractPicture = '''
 
 def getPositions(positionTsvPath):
     positionTypes = ['CornerSize', 'TwoPositions']
-    removePadding = False
     posDict = {}
     type = ''
+    removePadding = False
 
     def positionCorner(x, y, size):
         return x, y, x + size, y + size
@@ -62,7 +63,7 @@ def getPositions(positionTsvPath):
                 position = tuple([int(elem) for elem in elements[1:]])
                 if type == 'CornerSize':
                     position = positionCorner(*position)
-                if type == 'removePadding':
+                if posName == 'removePadding':
                     removePadding = True
                 posDict[type][posName] = position
     return posDict, removePadding
@@ -80,8 +81,10 @@ def creatFolders(targetPath, folders):
 # creatFolders
 
 
-def crop(picPath, posDict, targetPaths, removePadding=False, paddingPos=None, resizeFactor=None, isTest=False):
+def crop(picPath, posDict, targetPaths, removePadding=False, paddingPos=None, resizeFactor=None, useFileTime=True, isTest=False):
     picName = os.path.splitext(os.path.basename(picPath))[0]
+    scanTime = getScanTime(picPath)
+    atime, utime = (scanTime, scanTime)
     with Image.open(picPath) as im:
         iccProfile = im.info.get('icc_profile')
         if isTest:
@@ -91,18 +94,24 @@ def crop(picPath, posDict, targetPaths, removePadding=False, paddingPos=None, re
             print(im.info)
         for posName in posDict:
             targetPath = targetPaths[posName]
-            outFilePath = os.path.join(targetPath, f'{picName}_{posName}.jpg')
+            outFilePath = os.path.join(targetPath, f'{picName}_{posName}.bmp')
             im.crop(posDict[posName]).save(outFilePath,
-                                           'jpeg',
+                                           'bmp',
                                            icc_profile=iccProfile,
-                                           progressive=True,
-                                           quality=90,
-                                           optimize=True)
+                                           )
+            if useFileTime:
+                os.utime(outFilePath, (atime, utime))
         if removePadding:
             if paddingPos == None:
                 pass
             else:
                 im = im.crop(paddingPos)
+                # save cropped pictures
+                croppedFilePath = os.path.join(targetPaths['cropped_ori'],
+                                               f'{picName}_clean.bmp')
+                im.save(croppedFilePath, 'bmp', icc_profile=iccProfile)
+                if useFileTime:
+                    os.utime(croppedFilePath, (atime, utime))
         if resizeFactor != None:
             resizeFilePath = os.path.join(targetPaths['resized'],
                                           f'{picName}_resized.jpg')
@@ -112,8 +121,10 @@ def crop(picPath, posDict, targetPaths, removePadding=False, paddingPos=None, re
                     'jpeg',
                     icc_profile=iccProfile,
                     progressive=True,
-                    quality=90,
+                    quality=85,
                     optimize=True)
+            if useFileTime:
+                os.utime(resizeFilePath, (atime, utime))
     return
 # crop
 
@@ -136,6 +147,9 @@ if __name__ == '__main__':
                         help='imput picutre extension, default "jpg"',
                         metavar='FMT',
                         default='jpg')
+    parser.add_argument('--noTimeFromFile',
+                        help='Time from origional file will be stored in all new files if this is not set',
+                        action='store_true')
     parser.add_argument('--test',
                         help='Only process the first image if set',
                         action='store_true')
@@ -145,7 +159,9 @@ if __name__ == '__main__':
     resizeFactor = args.resizeFactor
     outputPath = (picturesPath if args.outputPath == None else args.outputPath)
     inputExt = f'.{args.inputFmt}'
+    useFileTime = (True if not args.noTimeFromFile else False)
     isTest = args.test
+
     if isTest:
         print(args)
 
@@ -153,18 +169,18 @@ if __name__ == '__main__':
         os.mkdir(outputPath)
 
     allPosDict, removePadding = getPositions(positionTsvPath)
+    folders = list(allPosDict['CornerSize'].keys())
     if removePadding:
         paddingPos = allPosDict['TwoPositions']['removePadding']
+        folders.append('cropped_ori')
     else:
         paddingPos = None
-    folders = list(allPosDict['CornerSize'].keys())
     folders.append('resized')
 
     print('Creating folders...')
     targetPaths = creatFolders(outputPath, folders)
 
     print('Cropping...')
-
     fileList = sorted(list(file for file in
                            os.listdir(picturesPath) if file.endswith(inputExt)))
     filePathList = [os.path.join(picturesPath, file) for file in fileList]
@@ -175,6 +191,7 @@ if __name__ == '__main__':
                                    removePadding=removePadding,
                                    paddingPos=paddingPos,
                                    resizeFactor=resizeFactor,
+                                   useFileTime=useFileTime,
                                    isTest=isTest
                                    )
         print(f'Submitted {i}: {os.path.split(file)[-1]}')
