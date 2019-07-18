@@ -31,7 +31,7 @@ def measureCenterCircle(filePathList, radPrecent, useFileTime=True, imgTimeDiff=
         if useFileTime:
             time = getScanTime(filePath)
         else:
-            time = int(re.findall(r'[0-9]+', filePath)[-1]) * imgTimeDiff
+            time = int(re.findall(r'[0-9]+', filePath)[-1]) * imgTimeDiff * 3600
         # print(f'Processing {os.path.split(filePath)[1]}')
         im = imread(filePath, as_gray=True)
         center = (tuple(a / 2 for a in im.shape))
@@ -106,28 +106,27 @@ def plotMeasured(allPicsData, sampleInfo, fillBetween, outputPath,
         level = next(iter(next(iter(sampleInfo.values())).keys()))
         # else level = level
 
-    # dereplicate group keys under this level
-    groups = []
-    for posName in sampleInfo:
-        groups.append(sampleInfo[posName][level])
-    groups = list(set(groups))
-    groups.sort()
-    if groupSequence != None:
-        newGroups = ['' for group in groups]
-        for i, seq in enumerate(groupSequence):
-            newGroups[seq] = groups[i]
-        groups = newGroups
-    # generate dictionary of group name -> positions
-    groupPoses = {}
-    for group in groups:
-        groupPoses[group] = []
-    for posName in sampleInfo:
-        groupPoses[sampleInfo[posName][level]].append(posName)
-    # print(groupPoses)
-
     fig, ax = plt.subplots(1, 1)
 
     if fillBetween:
+        # dereplicate group keys under this level
+        groups = []
+        for posName in sampleInfo:
+            groups.append(sampleInfo[posName][level])
+        groups = list(set(groups))
+        groups.sort()
+        if groupSequence != None:
+            newGroups = ['' for group in groups]
+            for i, seq in enumerate(groupSequence):
+                newGroups[seq] = groups[i]
+            groups = newGroups
+        # generate dictionary of group name -> positions
+        groupPoses = {}
+        for group in groups:
+            groupPoses[group] = []
+        for posName in sampleInfo:
+            groupPoses[sampleInfo[posName][level]].append(posName)
+
         means = {}  # for use of output
         stderrs = {}  # for use of output
         for group in groups:
@@ -146,7 +145,13 @@ def plotMeasured(allPicsData, sampleInfo, fillBetween, outputPath,
                 dataOutput = pd.concat((dataOutput, singleGroupStatistic), axis=1)
                 dataOutput.to_excel(os.path.join(outputPath, f'data_statistic.xlsx'))
     else:
-        for posName in sampleInfo:
+        lineNames = list(sampleInfo.keys())  # convert unordered dict to list
+        if groupSequence != None:
+            newLineNames = ['' for info in lineNames]
+            for i, seq in enumerate(groupSequence):
+                newLineNames[seq] = lineNames[i]
+            lineNames = newLineNames
+        for posName in lineNames:
             ax.plot(allPicsData[posName], label=sampleInfo[posName][level])
     # plot beautify
     ax.spines['top'].set_visible(False)
