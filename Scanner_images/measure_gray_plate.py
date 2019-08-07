@@ -14,16 +14,6 @@ from datetime import datetime
 from shutil import copy2
 
 
-def findPositions(digStr):
-    position = []
-    column = ['L', 'R']
-    row = ['T', 'M', 'B']
-    for i, l in enumerate(digStr):
-        if l != '0':
-            position.append(row[i] + column[int(l) - 1])
-    return position
-
-
 def measureCenterCircle(filePathList, radPrecent, useFileTime=True, imgTimeDiff=0.5, minMaxNorm=True):
     pos = os.path.split(os.path.split(filePathList[0])[0])[1]
     results = pd.DataFrame(columns=['time', pos])
@@ -43,7 +33,7 @@ def measureCenterCircle(filePathList, radPrecent, useFileTime=True, imgTimeDiff=
     results = results.sort_values('time').reset_index(drop=True)
     results['time'] -= results['time'][0]
     results['time'] = results['time'] / 3600  # convert seconds to hour
-    results[pos] -= results[pos].min()
+    results[pos] -= results[pos].iloc[0:10].min()
     # Normalization
     if minMaxNorm:
         results[pos] = results[pos] / results[pos].max()
@@ -92,10 +82,16 @@ def getInfo(sampleInfoTsvPath):
     return sampleInfo
 
 
-def measureOnePlate(path, fileExt):
+def measureOnePlate(path, minMaxNorm):
     filePathes = [os.path.join(path, file)
-                  for file in os.listdir(path) if file.endswith(fileExt)]
-    results = measureCenterCircle(filePathes, 0.7)
+                  for file in os.listdir(path) if file.endswith('bmp')]
+    results = measureCenterCircle(
+        filePathes,
+        radPrecent=0.7,
+        useFileTime=True,
+        imgTimeDiff=0.5,
+        minMaxNorm=minMaxNorm
+    )
     return results
 
 
@@ -107,7 +103,6 @@ def plotMeasured(allPicsData, sampleInfo, fillBetween, outputPath,
         # else level = level
 
     fig, ax = plt.subplots(1, 1)
-
     if fillBetween:
         # dereplicate group keys under this level
         groups = []
@@ -162,7 +157,8 @@ def plotMeasured(allPicsData, sampleInfo, fillBetween, outputPath,
     ax.set_xticks(np.arange(0, timeSpan + 1, 6))
     timeRange = [timeRange[0] - timeSpan * 0.05, timeRange[1] + timeSpan * 0.05]
     ax.set_xlim(timeRange)
-    yMax = ax.get_ylim()[1]
+    yMin, yMax = ax.get_ylim()
+    ax.set_ylim(0 - (yMax - yMin) * 0.05, yMax)
     draw_line(ax, drawLines, lineColor, yMax=yMax)
     plt.xlabel('time (h)')
     plt.ylabel('brightness')
@@ -227,9 +223,11 @@ if __name__ == '__main__':
         threadPool = ThreadPoolExecutor(max_workers=8)
         futures = []
         for folder in folders:
-            future = threadPool.submit(measureOnePlate,
-                                       os.path.join(rootPath, folder),
-                                       fileExt)
+            future = threadPool.submit(
+                measureOnePlate,
+                os.path.join(rootPath, folder),
+                minMaxNorm
+            )
             futures.append(future)
             print(f'Submited {folder}.')
 
@@ -250,9 +248,9 @@ if __name__ == '__main__':
         with open(dataPickle, 'rb') as resultData:
             allPicsData = pickle.load(resultData)
 ################
-    groupSequence = [0, 3, 1, 2]  # index of origional sequence
-    drawLines = [24, 52, 52.5, 56]
-    lineColor = ['k', 'C1', 'C0', 'C2']
+    groupSequence = [0, 1, 3, 2]  # index of origional sequence
+    drawLines = [24, 40.5, 44, 45, 47.5]
+    lineColor = ['k', 'C1', 'C3', 'C0', 'C2']
     timeRange = [0, 68.5]
     plotMeasured(allPicsData, sampleInfo, fillBetween, outputPath,
                  drawLines=drawLines, timeRange=timeRange, groupSequence=groupSequence, lineColor=lineColor)
@@ -265,6 +263,7 @@ if __name__ == '__main__':
                      drawLines=drawLines, timeRange=timeRange, groupSequence=groupSequence, lineColor=lineColor,
                      isSatisified=True)
         copy2(pathThisScript, outputPath)
+        copy2(sampleInfoTsvPath, outputPath)
         print('Result saved.')
     else:
         print('Result ignored')
