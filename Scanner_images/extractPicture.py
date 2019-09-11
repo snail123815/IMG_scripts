@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 import platform
 import os
+from changeName import getScanTime, determinePrefixExtension
 discriptionText_extractPicture = '''
     Depends on Pillow (PIL Fork) https://pillow.readthedocs.io/en/latest/
 
@@ -33,25 +34,36 @@ discriptionText_extractPicture = '''
 
 
 def getPositions(positionTsvPath):
-    positionTypes = ['CornerSize', 'TwoPositions']
-    removePadding = False
+    positionTypes = ['CornerSize', 'TwoPositions', 'CenterSize', 'removePadding']
     posDict = {}
     type = ''
+    removePadding = False
 
     def positionCorner(x, y, size):
         return x, y, x + size, y + size
+
+    def positionCenter(x, y, size):
+        return int(x - size / 2), int(y - size / 2), int(x + size / 2), int(y + size / 2)
+
     # positionCorner
     with open(positionTsvPath, 'r') as posFile:
         for line in posFile.readlines():
+            if line.startswith('#') or len(line) == 0:
+                continue
             elements = [elem.strip() for elem in line.split('\t')]
             if elements[0] == 'end':
                 break
             elements = [elem for elem in elements if elem != '']
             elements = [elem for elem in elements if not elem.startswith('#')]
-
+            if len(elements) == 0:
+                continue
             if elements[0] in positionTypes:
                 type = elements[0]
                 posDict[type] = {}
+                if type == 'removePadding':
+                    removePadding = True
+                    position = tuple([int(elem) for elem in elements[1:]])
+                    posDict['removePadding']['paddingPos'] = position
             else:
                 if type == '':
                     print('Error, no position type string found, check file.')
@@ -62,8 +74,11 @@ def getPositions(positionTsvPath):
                 position = tuple([int(elem) for elem in elements[1:]])
                 if type == 'CornerSize':
                     position = positionCorner(*position)
-                if type == 'removePadding':
-                    removePadding = True
+                if type == 'CenterSize':
+                    position = positionCenter(*position)
+                if type == 'TwoPositions':
+                    # position = position
+                    pass
                 posDict[type][posName] = position
     return posDict, removePadding
 # getPositions
@@ -80,8 +95,18 @@ def creatFolders(targetPath, folders):
 # creatFolders
 
 
-def crop(picPath, posDict, targetPaths, removePadding=False, paddingPos=None, resizeFactor=None, isTest=False):
-    picName = os.path.splitext(os.path.basename(picPath))[0]
+def crop(picPath, posDict, targetPaths, removePadding=False, paddingPos=None, resizeFactor=None, useFileTime=True, isTest=False):
+    picName, extension = os.path.splitext(os.path.basename(picPath))
+    if extension not in ['.bmp', '.tif', '.tiff', '.png']:
+        outputFmt = 'jpeg'
+        outputExt = '.jpg'
+        # no need to save as bmp for already lossy pictures
+    else:
+        outputFmt = 'bmp'
+        outputExt = '.bmp'
+        # bmp files will be easier for compression latter
+    scanTime = getScanTime(picPath)
+    atime, utime = (scanTime, scanTime)
     with Image.open(picPath) as im:
         iccProfile = im.info.get('icc_profile')
         if isTest:
@@ -91,18 +116,25 @@ def crop(picPath, posDict, targetPaths, removePadding=False, paddingPos=None, re
             print(im.info)
         for posName in posDict:
             targetPath = targetPaths[posName]
-            outFilePath = os.path.join(targetPath, f'{picName}_{posName}.jpg')
+            outFilePath = os.path.join(targetPath, f'{picName}_{posName}{outputExt}')
             im.crop(posDict[posName]).save(outFilePath,
-                                           'jpeg',
+                                           outputFmt,
                                            icc_profile=iccProfile,
-                                           progressive=True,
-                                           quality=90,
-                                           optimize=True)
+                                           )
+            if useFileTime:
+                os.utime(outFilePath, (atime, utime))
         if removePadding:
             if paddingPos == None:
+                print('No padding info found.')
                 pass
             else:
                 im = im.crop(paddingPos)
+                # save cropped pictures
+                croppedFilePath = os.path.join(targetPaths['cropped_ori'],
+                                               f'{picName}_clean{outputExt}')
+                im.save(croppedFilePath, outputFmt, icc_profile=iccProfile)
+                if useFileTime:
+                    os.utime(croppedFilePath, (atime, utime))
         if resizeFactor != None:
             resizeFilePath = os.path.join(targetPaths['resized'],
                                           f'{picName}_resized.jpg')
@@ -112,8 +144,10 @@ def crop(picPath, posDict, targetPaths, removePadding=False, paddingPos=None, re
                     'jpeg',
                     icc_profile=iccProfile,
                     progressive=True,
-                    quality=90,
+                    quality=85,
                     optimize=True)
+            if useFileTime:
+                os.utime(resizeFilePath, (atime, utime))
     return
 # crop
 
@@ -123,7 +157,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      description=discriptionText_extractPicture)
     parser.add_argument('picturesPath', help='Path with picutres to process')
-    parser.add_argument('positionTsvPath', help='tsv file for positions')
+    parser.add_argument('positionTsvPath', help='tsv file for (first part) positions')
     parser.add_argument('-r', '--resizeFactor', help='Factor of origional size (0-1), default 0.35',
                         type=float,
                         default=0.35,
@@ -136,67 +170,129 @@ if __name__ == '__main__':
                         help='imput picutre extension, default "jpg"',
                         metavar='FMT',
                         default='jpg')
+    parser.add_argument('--noTimeFromFile',
+                        help='Time from origional file will be stored in all new files if this is not set',
+                        action='store_true')
     parser.add_argument('--test',
                         help='Only process the first image if set',
                         action='store_true')
+    parser.add_argument('--diffPos',
+                        nargs='*',
+                        help='''If your plates was moved during experiment, then you need multiple
+                        position files.
+                        This argument allows you to do:
+                        [start number] [positionTsvPath] [start number] [positionTsvPath]...
+                        Here you can use teh number in actuall file name for reference''')
     args = parser.parse_args()
     picturesPath = args.picturesPath.strip()
     positionTsvPath = args.positionTsvPath.strip()
     resizeFactor = args.resizeFactor
     outputPath = (picturesPath if args.outputPath == None else args.outputPath)
     inputExt = f'.{args.inputFmt}'
+    useFileTime = (True if not args.noTimeFromFile else False)
     isTest = args.test
+    diffPos = args.diffPos
+    diffPosNums = [0, ]
+    diffPosFiles = [positionTsvPath, ]
+    if diffPos != None:
+        if len(diffPos) % 2 != 0:
+            parser.error('The --diffPos argument requires both number and file')
+        for i, item in enumerate(diffPos):
+            if i % 2 == 0:
+                diffPosNums.append(int(item))
+            else:
+                diffPosFiles.append(item)
+    prefix, extension, totalNum, digits = determinePrefixExtension(picturesPath)
+    if extension != inputExt:
+        ext = ''
+        while ext not in [extension, inputExt]:
+            ext = input(f'''{extension} determined from the input folder,
+            it is different from default or input .{inputExt}, which one?
+            "{extension}"/".{inputExt}":''')
+        inputExt = ext
+
     if isTest:
         print(args)
 
     if not os.path.isdir(outputPath):
         os.mkdir(outputPath)
-
-    allPosDict, removePadding = getPositions(positionTsvPath)
-    if removePadding:
-        paddingPos = allPosDict['TwoPositions']['removePadding']
-    else:
-        paddingPos = None
-    folders = list(allPosDict['CornerSize'].keys())
-    folders.append('resized')
-
-    print('Creating folders...')
-    targetPaths = creatFolders(outputPath, folders)
-
-    print('Cropping...')
-
     fileList = sorted(list(file for file in
                            os.listdir(picturesPath) if file.endswith(inputExt)))
-    filePathList = [os.path.join(picturesPath, file) for file in fileList]
-    threadPool = ThreadPoolExecutor(max_workers=8)
-    futures = []
-    for i, file in enumerate(filePathList):
-        future = threadPool.submit(crop, file, allPosDict['CornerSize'], targetPaths,
-                                   removePadding=removePadding,
-                                   paddingPos=paddingPos,
-                                   resizeFactor=resizeFactor,
-                                   isTest=isTest
-                                   )
-        print(f'Submitted {i}: {os.path.split(file)[-1]}')
+    fileNums = []
+    for file in fileList:
+        fileNums.append(int(os.path.splitext(file)[0][len(prefix):]))
+
+    for i, (num, positionTsvPath) in enumerate(zip(diffPosNums, diffPosFiles)):
+        allPosDict, removePadding = getPositions(positionTsvPath)
+        posToCrop = {}
+        for posType in allPosDict:
+            if posType == 'removePadding':
+                continue
+            if len(allPosDict[posType]) == 0:
+                continue
+            for pos in allPosDict[posType]:
+                posToCrop[pos] = allPosDict[posType][pos]
         if i == 0:
-            exception = future.exception()
-            # this will wait the first implementation to finish, and check if
-            # any exception happened
-            if exception != None:
-                print('There is exception in the first implementation:')
-                print(exception)
-                exit()
-        futures.append(future)
-        if isTest:
-            print('Test run...')
-            future.result()
-            break
-    print('All submitted! Waiting for finish.')
-    exceptions = [future.exception() for future in futures]
-    for i, excep in enumerate(exceptions):
-        if excep != None:
-            print(f'There is exception in run index {i}:')
-            print(excep)
-            break
-    threadPool.shutdown()
+            folders = list(posToCrop.keys())
+            if removePadding:
+                paddingPos = allPosDict['removePadding']['paddingPos']
+                folders.append('cropped_ori')
+            else:
+                paddingPos = None
+            folders.append('resized')
+
+            if len(set(folders)) < len(folders):
+                duplicated = folders
+                for item in set(folders):
+                    duplicated.remove(item)
+                raise ValueError(f'There are duplications in the sample IDs:\n{duplicated}')
+            print('Creating folders...')
+            targetPaths = creatFolders(outputPath, folders)
+        print(f'Cropping group {i+1}/{len(diffPosNums)}...')
+        if i == 0:
+            startingNum = 0
+        else:
+            startingNum = diffPosNums[i]
+        if i + 1 < len(diffPosNums):
+            nextGroupStart = diffPosNums[i + 1]
+        else:
+            nextGroupStart = fileNums[-1] + 1
+        subFileList = []
+        for file, fileNum in zip(fileList, fileNums):
+            if fileNum in range(startingNum, nextGroupStart):
+                subFileList.append(file)
+
+        filePathList = [os.path.join(picturesPath, file) for file in subFileList]
+        threadPool = ThreadPoolExecutor(max_workers=8)
+        futures = []
+        for i, file in enumerate(filePathList):
+            future = threadPool.submit(crop, file, posToCrop, targetPaths,
+                                       removePadding=removePadding,
+                                       paddingPos=paddingPos,
+                                       resizeFactor=resizeFactor,
+                                       useFileTime=useFileTime,
+                                       isTest=isTest
+                                       )
+            print(f'Submitted {i}: {os.path.split(file)[-1]}')
+            if i == 0:
+                exception = future.exception()
+                # this will wait the first implementation to finish, and check if
+                # any exception happened
+                if exception != None:
+                    print('There is exception in the first implementation:')
+                    print(exception)
+                    exit()
+            futures.append(future)
+            if isTest:
+                print('Test run...')
+                future.result()
+                break
+        print('All submitted! Waiting for finish.')
+        exceptions = [future.exception() for future in futures]
+        for i, excep in enumerate(exceptions):
+            if excep != None:
+                print(f'There is exception in run index {i}:')
+                print(excep)
+                break
+        threadPool.shutdown()
     print('Finished!')
