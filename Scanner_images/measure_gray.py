@@ -129,17 +129,31 @@ def plotMeasured(allPicsData, sampleInfo, fillBetween, outputPath, startTiming=0
             if group in groups:
                 groupPoses[group].append(posName)
 
+        targetTimeRange = []
+        for idx in allPicsData[groupPoses[groups[0]]].index:
+            if idx < timeRange[0]:
+                continue
+            if idx > timeRange[1]:
+                continue
+            targetTimeRange.append(idx)
+
         means = {}  # for use of output
         stderrs = {}  # for use of output
-        totalMax = 0
+        totalMax = allPicsData[groupPoses[groups[0]]].mean(axis=1).loc[targetTimeRange].min()
+        totalMin = allPicsData[groupPoses[groups[0]]].mean(axis=1).loc[targetTimeRange].max()
         for group in groups:
-            means[group] = allPicsData[groupPoses[group]].mean(axis=1)
-            stderrs[group] = allPicsData[groupPoses[group]].sem(axis=1)
-            max = means[group].max() + stderrs[group].loc[means[group].idxmax()]
+            means[group] = allPicsData[groupPoses[group]].mean(axis=1).loc[targetTimeRange]
+            stderrs[group] = allPicsData[groupPoses[group]].sem(axis=1).loc[targetTimeRange]
+            # Find max value of mean
+            max = (means[group] + stderrs[group]).max()
+            min = (means[group] - stderrs[group]).min()
             if max > totalMax:
                 totalMax = max
+            if min < totalMin:
+                totalMin = min
 
         for group in groups:
+            # normalize to 1
             means[group] = means[group] / totalMax
             stderrs[group] = stderrs[group] / totalMax
             ax.plot(means[group], label=group)
@@ -174,7 +188,7 @@ def plotMeasured(allPicsData, sampleInfo, fillBetween, outputPath, startTiming=0
     timeRange = [timeRange[0] - timeSpan * 0.05, timeRange[1] + timeSpan * 0.05]
     ax.set_xlim(timeRange)
     yMin, yMax = ax.get_ylim()
-    ax.set_ylim(0 - (yMax - yMin) * 0.05, yMax)
+    # ax.set_ylim(0 - (yMax - yMin) * 0.05, yMax)
     draw_line(ax, drawLines, lineColor, yMax=yMax)
     plt.xlabel('time (h)')
     plt.ylabel('brightness')
@@ -285,11 +299,11 @@ if __name__ == '__main__':
             pickle.dump([allPicsData, startTiming, radPrecent], resultData)
         allPicsData.to_excel(f'{os.path.splitext(dataPickle)[0]}.xlsx')
 ################
-    groupSequence = [10, 21]  # index of origional sequence, see print out for reference
-    # groupSequence = None
+    # groupSequence = [2, 5]  # index of origional sequence, see print out for reference
+    groupSequence = None
     drawLines = []
     lineColor = []
-    timeRange = [20, 155]
+    timeRange = [0, 49]
     plotMeasured(allPicsData, sampleInfo, fillBetween, outputPath, startTiming=startTiming,
                  drawLines=drawLines, timeRange=timeRange, groupSequence=groupSequence, lineColor=lineColor)
 
