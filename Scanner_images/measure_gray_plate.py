@@ -11,7 +11,7 @@ from changeName import getScanTime
 import re
 import codecs  # for possible unicode character, not fully tested
 from datetime import datetime
-from shutil import copy2
+from shutil import copy2, move
 
 
 def measureCenterCircle(filePathList, radPrecent, useFileTime=True, imgTimeDiff=0.5, minMaxNorm=True):
@@ -241,6 +241,10 @@ if __name__ == '__main__':
         for future in futures:
             results = future.result()
             allPicsData = pd.concat((allPicsData, results), axis=1)
+        if not minMaxNorm:
+            max = allPicsData.max(axis=0).max()
+            for col in allPicsData:
+                allPicsData[col] = allPicsData[col] / max
         with open(dataPickle, 'wb') as resultData:
             pickle.dump(allPicsData, resultData)
         allPicsData.to_excel(f'{os.path.splitext(dataPickle)[0]}.xlsx')
@@ -263,7 +267,7 @@ if __name__ == '__main__':
                      drawLines=drawLines, timeRange=timeRange, groupSequence=groupSequence, lineColor=lineColor,
                      isSatisified=True)
         copy2(pathThisScript, outputPath)
-        copy2(sampleInfoTsvPath, outputPath)
+        # copy2(sampleInfoTsvPath, outputPath)
         print('Result saved.')
     else:
         print('Result ignored')

@@ -1,0 +1,17 @@
+CornerSize	x	y	size		# upper left corner position
+p0	429	972	264
+p1	423	1278	264
+p2	735	1272	264
+p3	1035	1266	264
+TwoPositions	x1	y1	x2	y2	# upper left and lower right positions
+removePadding	387	939	1344	1563	# include this line if you need to remove certain padding
+end					# parse will stop here
+
+"positionTypes = ['CornerSize', 'TwoPosition']"
+
+sampleInfo	strain
+p0	WT
+p1	ΔsflA
+p2	ΔsflB
+p3	ΔsflAΔsflB
+end_info

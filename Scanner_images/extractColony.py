@@ -5,27 +5,8 @@ from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 
 
-path = input('Please specify the directory:\n').strip()
-
-
 def positionCenter(a, b, size):
     return a - size, b - size, a + size, b + size
-
-
-subCentPosPlates = {
-    # plate: [[x,y], [x,y], [x,y]]
-    # positionCenter(*positions, size)
-    'TL': [
-        [360, 328], [545, 361], [742, 388],
-        [331, 508], [539, 537], [735, 565],
-        [307, 708], [508, 733], [716, 755]
-    ],
-    'TR': [
-        [278, 343], [482, 329], [669, 299],
-        [307, 541], [509, 509], [706, 489],
-        [344, 745], [552, 710], [747, 676]
-    ]
-}
 
 
 def creatSubPlateFolders(path, plate, totalSubPos, subName='colony'):
@@ -69,8 +50,30 @@ def cropSubPlate(path, plate, subCentPosPlate):
     threadPool.shutdown(wait=True)
 
 
-for plate in subCentPosPlates:
-    cropSubPlate(path, plate, subCentPosPlates[plate])
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='pass a directory as first argument')
+    parser.add_argument('path', description='Full path of target dir')
+    args = parser.parse_args()
+    path = args.path
 
+    # needs to change - read from imageJ output
+    # subCentPosPlates = {
+    #     # plate: [[x,y], [x,y], [x,y]]
+    #     # positionCenter(*positions, size)
+    #     'TL': [
+    #         [360, 328], [545, 361], [742, 388],
+    #         [331, 508], [539, 537], [735, 565],
+    #         [307, 708], [508, 733], [716, 755]
+    #     ],
+    #     'TR': [
+    #         [278, 343], [482, 329], [669, 299],
+    #         [307, 541], [509, 509], [706, 489],
+    #         [344, 745], [552, 710], [747, 676]
+    #     ]
+    # }
 
-print('Finished!')
+    for plate in subCentPosPlates:
+        cropSubPlate(path, plate, subCentPosPlates[plate])
+
+    print('Finished!')
