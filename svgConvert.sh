@@ -18,7 +18,7 @@ quality=50
 # help string, synopsis
 showHelp() {
 cat << EOF
-Usage: ${0##*/} [options] FILE/DIR
+Usage: ${1##*/} [options] FILE/DIR
 Convert input FILE or the .svg files in DIR to .png or .jpg
 
 inkscape and will be used to convert to .png
@@ -30,9 +30,9 @@ Options:
             0.9 = $inkscape0_9
             1   = $inkscape1_0
     -f|--fmt
-        output format, png or jpg. Default $format
+        output format, png, jpg, pdf. Default $format
     --dpi
-        resolution of svg to png. Default 300
+        resolution of png and jpg. Default 300
     -q|--quality
         quality setup of png to jpg. Default 50
 EOF
@@ -52,7 +52,6 @@ convertSvgPng() {
         # for the propose of eval double quotes, the quotes needs to be escaped nicely
         local cmd="$inkscape0_9 -z -f \"$abssvg\" -e \"$abspng\" -d $dpi -C -b white"
     else
-        printf '%s -o "%s" -d %d -C -b white -y 1 "%s"\n\n' $inkscape1_0 $abspng $abssvg $dpi
         local cmd="$inkscape1_0 -o \"$abspng\" -d $dpi -C -b white -y 1 \"$abssvg\""
     fi
     echo; echo "===================================================================="
@@ -68,6 +67,27 @@ convertPngJpg() {
     eval "$cmd"
 }
 
+convertSvgPdf() {
+    # $1 : absolute filepath
+    # inkscape0.92 seems to take only absolute path
+    # don't know about version 1.0, doesn't hurt
+    if [[ ! $#=2 ]]; then
+        echo "Exactly 2 arguments allowed for convertSvgPng()"
+        exit 1
+    fi
+    local abssvg=$1
+    abspdf="${abssvg%.*}.pdf"
+    if [[ ${version} = 0.9 ]]; then
+        # for the propose of eval double quotes, the quotes needs to be escaped nicely
+        local cmd="$inkscape0_9 -z -f \"$abssvg\" -A \"$abspdf\" --export-text-to-path --export-ignore-filters -C -b white"
+    else
+        local cmd="$inkscape1_0 -o \"$abspdf\" -d $dpi -C -b white -y 1 --export-text-to-path --export-ignore-filters \"$abssvg\""
+    fi
+    echo; echo "===================================================================="
+    echo $cmd; echo
+    eval "$cmd" # eval needs double quotes to work properly with such string
+}
+
 getAbsFilePath() {
     # $1 : file path, doesn't matter relative or absolute
     echo $(cd "$(dirname "$1")" && pwd)/$(basename "$1")
@@ -77,7 +97,7 @@ getAbsFilePath() {
 while :; do
     case $1 in # starting parse the first switch
         -h|-\?|--help)
-            showHelp # Display a usage synopsis.
+            showHelp $0 # Display a usage synopsis.
             exit 0
             ;;
         -v|--version) # Takes an option argument; ensure it has been specified.
@@ -92,8 +112,8 @@ while :; do
         -f|--fmt)
             # now $1 is -f|--fmt
             format=$2
-            if [[ ! " png jpg " = *" "$format" "* ]]; then # like the `in` operator
-                echo "Wrong format, only png and jpg accepted" && exit 1
+            if [[ ! " png jpg pdf " = *" "$format" "* ]]; then # like the `in` operator
+                echo "Wrong format, only png, jpg, pdf accepted" && exit 1
             fi
             shift # remove $1, now $1=FMT, VERY IMPORTANT
             ;;
@@ -131,7 +151,7 @@ while :; do
             break
     esac
     # IMPORTANT:
-    shift # if case is iterating to an argument, shift and case again
+    shift # if case is iterating to an argument value, shift and case again
 done
 
 # parse actual file or dir from left over argument
@@ -139,18 +159,25 @@ pathInput=$(getAbsFilePath "$@")
 
 # generate an array of files to process
 files=()
-if [ -d $pathInput ]; then
-    for fsvg in "${pathInput}/"*.svg; do
-        files+=$fsvg
-    done
-elif [ -f $pathInput ]; then
-    files+=$pathInput
-fi
+for var in "$@"; do
+    pathInput=$(getAbsFilePath "$var")
+    if [ -d $pathInput ]; then
+        for fsvg in "${pathInput}/"*.svg; do
+            files+=$fsvg
+        done
+    elif [ -f $pathInput ]; then
+        files+=$pathInput
+    fi
+done
 
 # process
 for fsvg in ${files[@]}; do
-    convertSvgPng "$fsvg"
-    if ! [[ $format = png ]]; then
-        convertPngJpg "$abspng"
+    if [[ $format = pdf ]]; then
+        convertSvgPdf "$fsvg"
+    else # png or jpg
+        convertSvgPng "$fsvg"
+        if [[ $format = jpg ]]; then
+            convertPngJpg "$abspng"
+        fi
     fi
 done
