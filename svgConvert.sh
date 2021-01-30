@@ -10,7 +10,7 @@ inkscape0_9="/Users/duc/Applications/Inkscape.app/Contents/Resources/bin/inkscap
 inkscape1_0="/usr/local/bin/inkscape"
 
 # default values
-version=0.9
+version=1
 format=jpg
 dpi=300
 quality=50
