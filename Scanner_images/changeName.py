@@ -130,14 +130,15 @@ def changeToNew(path, dictOld2New, dictOldScanTime, logFile):
     """Pass empty dict for dictOld2New and dictOldScanTime if fresh"""
     isFresh = False
     # if empty dict is passed, then I know file names are intact
+    prefix, extension, totalNum, digits = determinePrefixExtension(path)
     if len(dictOld2New) == 0:
         isFresh = True
-        prefix, extension, totalNum, digits = determinePrefixExtension(path)
         files = [file for file in os.listdir(path) if file.endswith(extension)]
     else:
         files = dictOld2New.keys()
 
-    nameChangeDict = {}
+    # Collect info, prepare old and new names in a dict
+    nameChangeDict = {} # {'old': 'new'}
     for oldName in files:
         oldFilePath = os.path.join(path, oldName)
         if isFresh:
@@ -148,12 +149,12 @@ def changeToNew(path, dictOld2New, dictOldScanTime, logFile):
             else:
                 num = 0
                 if foundNo1:
-                    print('Another file with no numbering?')
-                    exit()
+                    raise NameError('Another file with no numbering?')
                 else:
                     foundNo1 = True
             if not oldName.startswith(prefix[:-1]):
                 print(f'{oldName} not starts with {prefix}')
+                continue
             newName = f'{prefix}{str(num).zfill(digits)}{extension}'
             dictOld2New[oldName] = newName
             dictOldScanTime[newName] = getScanTime(oldFilePath)
@@ -163,8 +164,8 @@ def changeToNew(path, dictOld2New, dictOldScanTime, logFile):
         if os.path.isfile(newFilePath):
             newFilePath = f"{newFilePath}_temp"
         nameChangeDict[oldFilePath] = newFilePath
-    # If above loop is finished with no error, then do change name
-    counter = 0
+    
+    # If preparation finished with no error, do change name
     for oldFilePath in nameChangeDict:
         newFilePath = nameChangeDict[oldFilePath]
         os.rename(oldFilePath, newFilePath)
@@ -175,6 +176,7 @@ def changeToNew(path, dictOld2New, dictOldScanTime, logFile):
             correctPath = os.path.join(path, name)
             os.rename(tempPath, correctPath)
     isNew = True
+
     # write info to new file
     with open(logFile, 'wb') as fileNameLog:
         pickle.dump((dictOld2New, dictOldScanTime, isNew), fileNameLog)
@@ -188,8 +190,7 @@ def changeToOld(path, dictOld2New, dictOldScanTime, logFile):
         newName = dictOld2New[oldName]
         newFilePath = os.path.join(path, newName)
         if not os.path.isfile(newFilePath):
-            print(f'File not found {newFilePath}')
-            raise
+            raise NameError(f'File not found {newFilePath}')
         if os.path.isfile(oldFilePath) and newFilePath != oldFilePath:
             # the origional file name is being occupied by a different file
             oldFilePath = f'{oldFilePath}_temp'
@@ -200,6 +201,7 @@ def changeToOld(path, dictOld2New, dictOldScanTime, logFile):
         newFilePath, atime, mtime = nameChangeDict[oldFilePath]
         os.rename(newFilePath, oldFilePath)
         os.utime(oldFilePath, (atime, mtime))
+    # Deal with temp file names
     for file in os.listdir(path):
         if file.endswith('_temp'):
             name = file[:-5]
@@ -215,7 +217,7 @@ def changeToOld(path, dictOld2New, dictOldScanTime, logFile):
 
 def changeFileName(path):
     """Require changeToNew and changeToOld"""
-    logFile = os.path.join(path, 'name&timeLog')
+    logFile = os.path.join(path, 'nameTimeLog')
 
     if os.path.isfile(logFile):
         with open(logFile, 'rb') as fileNameLog:
@@ -252,7 +254,6 @@ def writeTable(path, logFile):
     logTsv = os.path.join(path, f'scanLog{minDate}-{maxDate}.tsv'.replace(' ', '_'))
 
     if os.path.isfile(logTsv):
-        print(f'Already a file {logTsv}')
         pass
     else:
         with open(logTsv, 'w') as logTsv:
