@@ -7,6 +7,8 @@ Then the file names will be easily connected with the scanned time point.
 The script is also able to preserve the file creation time in a pickle file,
 and able to restore all names and times with a second run of this script on
 the same directory
+
+After renaming the files, put files in `origional_images` folder
 '''
 
 
@@ -23,10 +25,17 @@ recognizableImageExtensions = ['.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.png']
 
 
 def determineExtension(path):
-    # find extension
+    """Find the most representative file extension in this dir
+
+    Args:
+        path (str): Path to dir
+
+    Returns:
+        extension: ".***"
+    """
     extList = []
     for file in os.listdir(path):
-        name, ext = os.path.splitext(file)
+        _, ext = os.path.splitext(file)
         extList.append(ext)
 
     allExts = list(set(extList))
@@ -52,7 +61,7 @@ def determineExtension(path):
             isSet = False
             while not isSet:
                 ext = input(
-                    f"I don't know which extension is correct, please choose one:\n{mostExts}\n")
+                    f"I find multiple extensions in {path},\nplease choose one:\n{mostExts}\n")
                 if ext in mostExts:
                     mostExts = [ext, ]
                     isSet = True
@@ -60,12 +69,22 @@ def determineExtension(path):
                     print('Please type in ".***" (including the dot)')
     extension = mostExts[0]
     return extension
+# determineExtension()
 
 
 def determinePrefixExtension(path):
-    """
-    Find extension first, by the most aboundant and picture ones,
+    """Find extension first, by the most aboundant and picture ones,
     Find prefix second, by remove numbering of files with found extension.
+
+    Args:
+        path (str): Path
+
+    Returns:
+        prefix, extension, totalNum, digits: 
+            prefix - file name prefix
+            extension - extension of these files
+            totalNum - number of files with the prefix and extension
+            digits - number of digits of the numbering needed (for downstream zfill)
     """
     extension = determineExtension(path)
     # find prefix
@@ -111,23 +130,47 @@ def determinePrefixExtension(path):
 
 
 def getScanTime(filePath):
-    """
-    Try to get the date that a file was created, falling back to when it was
+    """Try to get the date that a file was created, falling back to when it was
     last modified if that isn't possible.
     See http://stackoverflow.com/a/39501288/1709587 for explanation.
+
+    Args:
+        filePath (str): path to file
+
+    Returns:
+        timeCreation: 
+            On Windows system:
+                os.stat(filePath).st_mtime
+            On Mac and linux:
+                os.path.getctime(filePath)
     """
     if platform.system() == 'Windows':
         timeCreation = os.path.getctime(filePath)
     else:
-        stat = os.stat(filePath)
-        # the file is from windows, so I can not get ctime from MacOS or linux. mtime is enough
-        timeCreation = stat.st_mtime
+        timeCreation = os.stat(filePath).st_mtime
     return timeCreation
 # getScanTime
 
 
-def changeToNew(path, dictOld2New, dictOldScanTime, logFile):
-    """Pass empty dict for dictOld2New and dictOldScanTime if fresh"""
+def genLogFile(path):
+    return os.path.join(path, 'nameTimeLog')
+
+
+def changeToNew(path, dictOld2New, dictOldScanTime):
+    """Parse all file names, make file names easier to parse in the following steps.
+    Pass {} for dictOld2New and {} for dictOldScanTime if fresh.
+    After rename, moveToOriDir() will be called, all file will be moved to a folder called
+    'origional_images' in this path
+
+    Args:
+        path (str): path to dir
+        dictOld2New (dict): {'old': 'new'}
+        dictOldScanTime (dict): {'old': timestamp}
+
+    Raises:
+        NameError: If more than one file is found with no numbering
+    """
+    logFile = genLogFile(path)
     isFresh = False
     # if empty dict is passed, then I know file names are intact
     prefix, extension, totalNum, digits = determinePrefixExtension(path)
@@ -138,7 +181,7 @@ def changeToNew(path, dictOld2New, dictOldScanTime, logFile):
         files = dictOld2New.keys()
 
     # Collect info, prepare old and new names in a dict
-    nameChangeDict = {} # {'old': 'new'}
+    nameChangeDict = {}  # {'old': 'new'}
     for oldName in files:
         oldFilePath = os.path.join(path, oldName)
         if isFresh:
@@ -164,7 +207,7 @@ def changeToNew(path, dictOld2New, dictOldScanTime, logFile):
         if os.path.isfile(newFilePath):
             newFilePath = f"{newFilePath}_temp"
         nameChangeDict[oldFilePath] = newFilePath
-    
+
     # If preparation finished with no error, do change name
     for oldFilePath in nameChangeDict:
         newFilePath = nameChangeDict[oldFilePath]
@@ -180,10 +223,26 @@ def changeToNew(path, dictOld2New, dictOldScanTime, logFile):
     # write info to new file
     with open(logFile, 'wb') as fileNameLog:
         pickle.dump((dictOld2New, dictOldScanTime, isNew), fileNameLog)
+
+    # Move file:
+    moveToOriDir(path, logFile)
 # changeToNew
 
 
-def changeToOld(path, dictOld2New, dictOldScanTime, logFile):
+def changeToOld(path, dictOld2New, dictOldScanTime):
+    """Will first move all files from 'origional_images' dir out and then
+    change file names to the original stats based on info in dictOld2New.
+    The file creation (modification) time will not be altered.
+
+    Args:
+        path (str): path to dir
+        dictOld2New (dict): {'old': 'new'}
+        dictOldScanTime (dict): {'old': timestamp}
+    """
+    logFile = genLogFile(path)
+    # move file back
+    moveToOriDir(path, logFile, back=True)
+
     nameChangeDict = {}
     for oldName in dictOld2New:
         oldFilePath = os.path.join(path, oldName)
@@ -216,33 +275,68 @@ def changeToOld(path, dictOld2New, dictOldScanTime, logFile):
 
 
 def changeFileName(path):
-    """Require changeToNew and changeToOld"""
-    logFile = os.path.join(path, 'nameTimeLog')
+    """Wraper changeToNew() and changeToOld()
+
+    Args:
+        path (str): path of the dirctory
+
+    Returns:
+        logFile: Path to the log file in the dirctory,
+                 Binary pickle containing (dictOld2New, dictOldScanTime, isNew)
+    """
+    logFile = genLogFile(path)
 
     if os.path.isfile(logFile):
-        with open(logFile, 'rb') as fileNameLog:
-            dictOld2New, dictOldScanTime, isNew = pickle.load(fileNameLog)
+        with open(logFile, 'rb') as f:
+            dictOld2New, dictOldScanTime, isNew = pickle.load(f)
         if not isNew:
-            changeToNew(path, dictOld2New, dictOldScanTime, logFile)
+            changeToNew(path, dictOld2New, dictOldScanTime)
         else:  # then we need to change back
-            changeToOld(path, dictOld2New, dictOldScanTime, logFile)
+            changeToOld(path, dictOld2New, dictOldScanTime)
     else:
         dictOld2New = {}
         dictOldScanTime = {}
-        changeToNew(path, dictOld2New, dictOldScanTime, logFile)
-    return logFile
-# changeFileName
+        changeToNew(path, dictOld2New, dictOldScanTime)
+    writeTable(path, logFile)
+# changeFileName()
+
+
+def moveToOriDir(path, logFile, back=False):
+    with open(logFile, 'rb') as fileNameLog:
+        dictOld2New, _, _ = pickle.load(fileNameLog)
+    tDir = os.path.join(path, 'origional_images')
+    if not os.path.isdir(tDir):
+        os.mkdir(tDir)
+    for oldName in dictOld2New:
+        newName = dictOld2New[oldName]
+        newFileOriPath = os.path.join(path, newName)
+        newFileTarPath = os.path.join(tDir, newName)
+        if back:
+            os.rename(newFileTarPath, newFileOriPath)
+            pass
+        else:
+            os.rename(newFileOriPath, newFileTarPath)
+    if back:
+        try:
+            os.rmdir(tDir)
+        except:
+            pass
+# moveToOriDir()
 
 
 def writeTable(path, logFile):
-    '''
+    """
     TSV file is written separately
     path can be a different directory
     logFile is the full path to the logFile
-    '''
-    with open(logFile, 'rb') as fileNameLog:
-        dictOld2New, dictOldScanTime, isNew = pickle.load(fileNameLog)
 
+    Args:
+        path (str): path to the directory
+        logFile (str): path of log file generated by changeFileName(path),
+                       This file is binary pickle containing (dictOld2New, dictOldScanTime, isNew)
+    """
+    with open(logFile, 'rb') as fileNameLog:
+        dictOld2New, dictOldScanTime, _ = pickle.load(fileNameLog)
     for newName in dictOldScanTime:
         timeCreation = dictOldScanTime[newName]
     maxTime = max(dictOldScanTime.values())
@@ -271,6 +365,7 @@ def writeTable(path, logFile):
             lines.sort(key=lambda line: line.split('\t')[1])
             lines.insert(0, 'old_name\tnew_name\tweek_day\tdate\tscan_time\n')
             logTsv.writelines(lines)
+# writeTable()
 
 
 if __name__ == '__main__':
@@ -280,5 +375,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     path = args.path
 
-    logFile = changeFileName(path)
-    writeTable(path, logFile)
+    changeFileName(path)
