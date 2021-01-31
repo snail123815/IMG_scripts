@@ -1,12 +1,15 @@
 '''
 Image names from scanner:
 
-Aim is to change the numbering of the file to obay certain rule:
+Aim is to change the numbering of the files for easy parsing
 first image is img_000.jpg    img_001.jpg    img_002.jpg    ...
 Then the file names will be easily connected with the scanned time point.
 The script is also able to preserve the file creation time in a pickle file,
 and able to restore all names and times with a second run of this script on
-the same directory
+the same directory.
+Why not use the timestamp stored in the file?
+    Sometimes that can be lost by copying from and to different file systems.
+    This is also the reason that I stored everything in a pickle and tsv file.
 
 After renaming the files, put files in `origional_images` folder
 '''
