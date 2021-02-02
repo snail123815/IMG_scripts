@@ -1,0 +1,43 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: extractPicture.py",
+            "type": "python",
+            "request": "launch",
+            "program": "extractPicture.py",
+            "console": "integratedTerminal",
+            "args": [
+                "/Users/duc/Downloads/rag_JA_MeJA",
+                "/Users/duc/Downloads/rag_JA_MeJA/extractPicture_PositionsAndInfo.txt",
+                //"--locationFromCropped"
+            ]
+        },
+        {
+            "name": "Python: changeName.py",
+            "type": "python",
+            "request": "launch",
+            "program": "funcs/changeName.py",
+            "console": "integratedTerminal",
+            "args": [
+                "/Users/duc/Downloads/rag_JA_MeJA"
+            ]
+        },
+        {
+            "name": "Python: measure_gray.py",
+            "type": "python",
+            "request": "launch",
+            "program": "measure_gray.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--noFillBetween",
+                "--minMaxNorm",
+                "/Users/duc/Downloads/rag_JA_MeJA",
+                "/Users/duc/Downloads/rag_JA_MeJA/extractPicture_PositionsAndInfo.txt",
+            ]
+        }
+    ]
+}

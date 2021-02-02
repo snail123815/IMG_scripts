@@ -1,126 +1,27 @@
 CornerSize	x	y	size		# upper left corner position
+1	128	920	201		
+2	1380	808	201		
+3	1040	1856	201		
+4	1860	1588	201		
+5	680	2964	201		
+6	1600	2828	201		
 CenterSize	x	y	size		# center and diameter
-1	1445	1213	270		
-2	1917	1233	270		
-3	2399	1259	270		
-4	1429	1723	270		
-5	1897	1735	270		
-6	2387	1747	270		
-7	1423	2235	270		
-8	1893	2251	270		
-9	2383	2261	270		
-10	3463	1243	270		
-11	3945	1221	270		
-12	4411	1257	270		
-13	3459	1747	270		
-14	3943	1743	270		
-15	4417	1743	270		
-16	3461	2253	270		
-17	3941	2255	270		
-18	4419	2261	270		
-19	708	3280	270		
-20	1182	3276	270		
-21	1684	3266	270		
-22	706	3780	270		
-23	1178	3782	270		
-24	1662	3804	270		
-25	720	4296	270		
-26	1188	4284	270		
-27	1674	4316	270		
-28	2742	3294	270		
-29	3206	3288	270		
-30	3680	3272	270		
-31	2744	3802	270		
-32	3226	3806	270		
-33	3718	3762	270		
-34	2768	4326	270		
-35	3240	4302	270		
-36	3716	4310	270		
-37	1320	5288	150		
-38	1131	5435	150		
-39	1527	5231	150		
-40	1995	5369	150		
-41	1854	5744	150		
-42	1746	6446	150		
-43	1794	5933	150		
-44	2490	6311	150		
-45	3690	5150	150		
-46	3525	5939	150		
-47	3513	6449	150		
-48	4137	5963	150		
-49	4146	5786	150		
-50	4584	6032	150		
-51	4716	5765	150		
-52	4617	5471	150		
 					
 					
 					
+WidthHeight	x1	y1	Width	Height	# upper left and lower right positions
 					
-					
-					
-					
-					
-					
-					
-					
-TwoPositions	x1	y1	x2	y2	# upper left and lower right positions
-					
-removePadding	160	720	4947	6864	# include this line if you need to remove certain padding
-end					# parse will stop here
-					
-"positionTypes = ['CornerSize', 'TwoPosition', 'CenterSize']"					
-					
-sampleInfo	strain				
-1	JA_3				
-2	JA_4				
-3	JA_5				
-4	JA_2				
-5	JA_3				
-6	JA_4				
-7	JA_1				
-8	JA_2				
-9	JA_3				
-10	Ctr_3				
-11	Ctr_4				
-12	Ctr_5				
-13	Ctr_2				
-14	Ctr_3				
-15	Ctr_4				
-16	Ctr_1				
-17	Ctr_2				
-18	Ctr_3				
-19	JA_clp_3				
-20	JA_clp_4				
-21	JA_clp_5				
-22	JA_clp_2				
-23	JA_clp_3				
-24	JA_clp_4				
-25	JA_clp_1				
-26	JA_clp_2				
-27	JA_clp_3				
-28	Ctr_clp_3				
-29	Ctr_clp_4				
-30	Ctr_clp_5				
-31	Ctr_clp_2				
-32	Ctr_clp_3				
-33	Ctr_clp_4				
-34	Ctr_clp_1				
-35	Ctr_clp_2				
-36	Ctr_clp_3				
-37	JA_sc				
-38	JA_sc				
-39	JA_sc				
-40	JA_sc				
-41	JA_sc				
-42	JA_sc				
-43	JA_sc				
-44	JA_sc				
-45	Ctr_sc				
-46	Ctr_sc				
-47	Ctr_sc				
-48	Ctr_sc				
-49	Ctr_sc				
-50	Ctr_sc				
-51	Ctr_sc				
-52	Ctr_sc				
+removePadding	48	372	2500	3444	# include this line if you need to remove certain padding (obey WidthHeight)
+
+TwoPositions	x1	y1	x2	y2
+
+END					# parse will stop here
+										
+sampleInfo	strain	colour			
+1	M145_MM	firebrick			
+2	M145_MeJA	lightsalmon			
+3	Δrag_MeJA	lightsteelblue			
+4	Δrag_JA	royalblue			
+5	Δrag_MM	darkblue 			
+6	M145_JA	tomato			
 end_info					

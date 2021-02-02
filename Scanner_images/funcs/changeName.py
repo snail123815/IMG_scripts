@@ -11,7 +11,7 @@ Why not use the timestamp stored in the file?
     Sometimes that can be lost by copying from and to different file systems.
     This is also the reason that I stored everything in a pickle and tsv file.
 
-After renaming the files, put files in `origional_images` folder
+After renaming the files, put files in `original_images` folder
 '''
 
 
@@ -21,21 +21,16 @@ import platform
 from datetime import datetime
 import re
 
-# If the script is located in the folder:
-# path = os.path.dirname(os.path.realpath(__file__))
-
-recognizableImageExtensions = ['.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.png']
-
-
 def determineExtension(path):
     """Find the most representative file extension in this dir
 
     Args:
-        path (str): Path to dir
+        path (str): Path to dir with images
 
     Returns:
         extension: ".***"
     """
+    recognizableImageExtensions = ['.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.png']
     extList = []
     for file in os.listdir(path):
         _, ext = os.path.splitext(file)
@@ -58,7 +53,7 @@ def determineExtension(path):
                 mostExts.remove(ext)
                 remove = True
         if len(mostExts) == 0:
-            print(f"I didn't recognize any image files in this path.\n{path}")
+            print(f"I didn't recognise any image files in this path.\n{path}")
             return None, None
         if not remove:  # means there are two image format with equal amount, ask for help
             isSet = False
@@ -80,7 +75,7 @@ def determinePrefixExtension(path):
     Find prefix second, by remove numbering of files with found extension.
 
     Args:
-        path (str): Path
+        path (str): Path to dir with images
 
     Returns:
         prefix, extension, totalNum, digits: 
@@ -163,7 +158,7 @@ def changeToNew(path, dictOld2New, dictOldScanTime):
     """Parse all file names, make file names easier to parse in the following steps.
     Pass {} for dictOld2New and {} for dictOldScanTime if fresh.
     After rename, moveToOriDir() will be called, all file will be moved to a folder called
-    'origional_images' in this path
+    'original_images' in this path
 
     Args:
         path (str): path to dir
@@ -233,7 +228,7 @@ def changeToNew(path, dictOld2New, dictOldScanTime):
 
 
 def changeToOld(path, dictOld2New, dictOldScanTime):
-    """Will first move all files from 'origional_images' dir out and then
+    """Will first move all files from 'original_images' dir out and then
     change file names to the original stats based on info in dictOld2New.
     The file creation (modification) time will not be altered.
 
@@ -254,7 +249,7 @@ def changeToOld(path, dictOld2New, dictOldScanTime):
         if not os.path.isfile(newFilePath):
             raise NameError(f'File not found {newFilePath}')
         if os.path.isfile(oldFilePath) and newFilePath != oldFilePath:
-            # the origional file name is being occupied by a different file
+            # the original file name is being occupied by a different file
             oldFilePath = f'{oldFilePath}_temp'
         atime = dictOldScanTime[newName]
         mtime = dictOldScanTime[newName]
@@ -307,7 +302,7 @@ def changeFileName(path):
 def moveToOriDir(path, logFile, back=False):
     with open(logFile, 'rb') as fileNameLog:
         dictOld2New, _, _ = pickle.load(fileNameLog)
-    tDir = os.path.join(path, 'origional_images')
+    tDir = os.path.join(path, 'original_images')
     if not os.path.isdir(tDir):
         os.mkdir(tDir)
     for oldName in dictOld2New:
