@@ -1,205 +1,23 @@
 import os
-from skimage import draw
-from skimage.io import imread
-from skimage.draw import circle
+import pickle
+
+from datetime import datetime
+from shutil import copy2, copytree
+from concurrent.futures import ThreadPoolExecutor
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from concurrent.futures import ThreadPoolExecutor
-import pickle
-from changeName import getScanTime, determineExtension
-import re
-import codecs  # for possible unicode character, not fully tested
-from datetime import datetime
-from shutil import copy2, move
 
+from funcs import getInfo, getPositions, measureImgs, plotMeasured
+from funcs.changeName import genLogFile
 
-def measureCenterCircle(filePathList, radPrecent, useFileTime=True, imgTimeDiff=0.5, minMaxNorm=True, startTiming=0):
-    # folder name = position string
-    pos = os.path.split(os.path.split(filePathList[0])[0])[1]
-    results = pd.DataFrame(columns=['time', pos])
-    for filePath in filePathList:
-        if useFileTime:
-            time = getScanTime(filePath)
-        else:
-            time = int(re.findall(r'[0-9]+', filePath)[-1]) * imgTimeDiff * 3600
-        # print(f'Processing {os.path.split(filePath)[1]}')
-        im = imread(filePath, as_gray=True)
-        center = (tuple(a / 2 for a in im.shape))
-        radius = im.shape[0] / 2 * radPrecent
-        rr, cc = circle(*center, radius)
-        roi = im[rr, cc]
-        newRow = pd.DataFrame({'time': time, pos: np.average(roi)}, index=[0])
-        results = results.append(newRow, ignore_index=True)
-    results = results.sort_values('time').reset_index(drop=True)
-    results['time'] -= results['time'][0]
-    results['time'] = startTiming + results['time'] / 3600  # convert seconds to hour
-    results[pos] -= results[pos].iloc[0:10].min()
-    # Normalization
-    if minMaxNorm:
-        results[pos] = results[pos] / results[pos].max()
-    results.index = results['time']
-    results = results.drop('time', axis=1)
-    return results
-
-
-def draw_line(ax, li, cl, yMax=1):
-    '''draw virtical lines on the position in li
-    color in list cl'''
-    ymin, ymax = ax.get_ylim()
-    yspan = ymax - ymin
-    for x, line in enumerate(li):
-        if li[x] == 24:
-            ax.axvline(li[x], color=cl[x], ymin=yspan * 0.05, ymax=yspan * 0.2)
-        else:
-            ax.axvline(li[x], color=cl[x], ymin=yspan * 0.8, ymax=yspan * 0.99)
-            ax.text(li[x], ymax * 1.01, f'{li[x]}h', color=cl[x],
-                    horizontalalignment='center', fontsize=7)
-
-
-def getInfo(sampleInfoTsvPath):
-    '''sampleInfo[posName][info] = elements[i + 1]'''
-    sampleInfo = {}
-    with codecs.open(sampleInfoTsvPath, encoding='utf-8', mode='r') as posFile:
-        infoStarted = False
-        for line in posFile.readlines():
-            elements = [elem.strip() for elem in line.split('\t')]
-            elements = [elem for elem in elements if elem != '']
-            elements = [elem for elem in elements if not elem.startswith('#')]
-            if len(elements) == 0:
-                continue
-            if elements[0] == 'sampleInfo':
-                infoStarted = True
-                sampleInfoHeader = [elem for elem in elements[1:]]
-                continue
-            if not infoStarted:
-                continue
-            posName = elements[0]
-            if posName == 'end_info':
-                break
-            sampleInfo[posName] = {}
-            for i, info in enumerate(sampleInfoHeader):
-                sampleInfo[posName][info] = elements[i + 1]
-    return sampleInfo
-
-
-def measureOnePlate(path, minMaxNorm, radPrecent=0.7, startTiming=0):
-    extension = determineExtension(path)
-    filePathes = [os.path.join(path, file)
-                  for file in os.listdir(path) if file.endswith(extension)]
-    results = measureCenterCircle(
-        filePathes,
-        radPrecent=radPrecent,
-        useFileTime=True,
-        imgTimeDiff=0.5,
-        minMaxNorm=minMaxNorm, startTiming=startTiming
-    )
-    return results
-
-
-def plotMeasured(allPicsData, sampleInfo, fillBetween, outputPath, startTiming=0,
-                 drawLines=[24, 48, 96], lineColor=['k', 'b', 'r'], timeRange=[0, 96], level=None, groupSequence=None, isSatisified=False):
-    # calculate average and stderr
-    if level == None:
-        level = next(iter(next(iter(sampleInfo.values())).keys()))
-        # else level = level
-
-    fig, ax = plt.subplots(1, 1)
-    if fillBetween:
-        # dereplicate group keys under this level
-        groups = []
-        for posName in sampleInfo:
-            groups.append(sampleInfo[posName][level])
-        groups = list(set(groups))
-        groups.sort()
-        if not isSatisified:
-            for i, group in zip(range(len(groups)), groups):
-                print(f'{i} - {group}')
-        if groupSequence != None:
-            newGroups = []
-            for seq in groupSequence:
-                newGroups.append(groups[seq])
-            groups = newGroups
-        # generate dictionary of group name -> positions
-        groupPoses = {}
-        for group in groups:
-            groupPoses[group] = []
-        for posName in sampleInfo:
-            group = sampleInfo[posName][level]
-            if group in groups:
-                groupPoses[group].append(posName)
-
-        targetTimeRange = []
-        for idx in allPicsData[groupPoses[groups[0]]].index:
-            if idx < timeRange[0]:
-                continue
-            if idx > timeRange[1]:
-                continue
-            targetTimeRange.append(idx)
-
-        means = {}  # for use of output
-        stderrs = {}  # for use of output
-        totalMax = allPicsData[groupPoses[groups[0]]].mean(axis=1).loc[targetTimeRange].min()
-        totalMin = allPicsData[groupPoses[groups[0]]].mean(axis=1).loc[targetTimeRange].max()
-        for group in groups:
-            means[group] = allPicsData[groupPoses[group]].mean(axis=1).loc[targetTimeRange]
-            stderrs[group] = allPicsData[groupPoses[group]].sem(axis=1).loc[targetTimeRange]
-            # Find max value of mean
-            max = (means[group] + stderrs[group]).max()
-            min = (means[group] - stderrs[group]).min()
-            if max > totalMax:
-                totalMax = max
-            if min < totalMin:
-                totalMin = min
-
-        for group in groups:
-            # normalize to 1
-            means[group] = means[group] / totalMax
-            stderrs[group] = stderrs[group] / totalMax
-            ax.plot(means[group], label=group)
-            ax.fill_between(means[group].index, means[group] + stderrs[group],
-                            means[group] - stderrs[group], alpha=0.3)
-        # output
-        outputFile = os.path.join(outputPath, f'data_statistic.xlsx')
-        if not os.path.isfile(outputFile):
-            dataOutput = pd.DataFrame()
-            for group in groups:
-                singleGroupStatistic = pd.concat((means[group], stderrs[group]), axis=1)
-                singleGroupStatistic.columns = [f'{group}_mean', f'{group}_stderr']
-                dataOutput = pd.concat((dataOutput, singleGroupStatistic), axis=1)
-                dataOutput.to_excel(os.path.join(outputPath, f'data_statistic.xlsx'))
-    else:
-        lineNames = list(sampleInfo.keys())  # convert unordered dict to list
-        if groupSequence != None:
-            newLineNames = ['' for info in lineNames]
-            for i, seq in enumerate(groupSequence):
-                newLineNames[seq] = lineNames[i]
-            lineNames = newLineNames
-        for posName in lineNames:
-            ax.plot(allPicsData[posName], label=sampleInfo[posName][level])
-    # plot beautify
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.xaxis.set_ticks_position('bottom')
-    ax.yaxis.set_ticks_position('left')
-    timeSpan = timeRange[1] - timeRange[0]
-    xtickInter = timeSpan // 6
-    ax.set_xticks(np.arange(startTiming, timeRange[1], xtickInter))
-    timeRange = [timeRange[0] - timeSpan * 0.05, timeRange[1] + timeSpan * 0.05]
-    ax.set_xlim(timeRange)
-    yMin, yMax = ax.get_ylim()
-    # ax.set_ylim(0 - (yMax - yMin) * 0.05, yMax)
-    draw_line(ax, drawLines, lineColor, yMax=yMax)
-    plt.xlabel('time (h)')
-    plt.ylabel('brightness')
-    plt.title('Growth pattern', y=1.04)
-    plt.legend(ncol=1, fontsize=8, framealpha=0.3)
-    plt.tight_layout()
-    if not isSatisified:
-        plt.show()
-    else:
-        outputFig = os.path.join(outputPath, f'{datetime.now().strftime("%Y.%m.%d-%H.%M.%S")}.svg')
-        plt.savefig(outputFig)
+# TODO
+# - [x] Add colour in the description csv
+# - [x] `change_name` script, make it to recognise unusual names
+# - [x] extractPicture script, need to know which location base comes from: from origin image? or cropped image?
+# - [x] Make the changes of line drawing reflect on the fly (well, return to command line and draw again)
+# - [ ] Make all functions can be called from one script
 
 
 if __name__ == '__main__':
@@ -207,119 +25,247 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,)
     parser.add_argument('rootPath', help='Path to root dir with sub folders for each plate')
     parser.add_argument('sampleInfoTsvPath',
-                        help='tsv file for sample information, same name will be averaged')
-    parser.add_argument('-o', '--outputPath',
-                        help='''Location to store processed picture,
-                                    same as rootPath if not specified''',
-                        metavar='PATH')
-    parser.add_argument('--inputFmt',
-                        help='imput picutre extension, default "jpg"',
-                        metavar='FMT',
-                        default='jpg')
-    parser.add_argument('--noFillBetween',
+                        help='tsv file for sample information, same name will be averaged, when multiple location files are needed, use the first one for this mandatory argument')
+    parser.add_argument('--forceNoFillBetween',
                         help='fill between stderr if not set',
-                        action='store_false')
-    parser.add_argument('--noTimeFromFile',
-                        help='Time from origional file will be used in plotting if not set',
-                        action='store_false')
-    parser.add_argument('--minMaxNorm', help="Do normalization if set",
                         action='store_true')
-    parser.add_argument('--startTiming', help="The time of the first picutre",
-                        type=int, default=-1)
-    parser.add_argument('--radPrecent', default=0., type=float,
-                        help='Measuring circle, this precent is to specify the precentage of the picture width to be considered')
+    parser.add_argument('--noTimeFromFile',
+                        help='Time from original file will be used in plotting if not set, else, use the numbers in file name, gapped by --imageInterval',
+                        action='store_true')
+    parser.add_argument('--imageInterval',
+                        help='Hours, only affect if --noTimeFromFile is set or the creation time cannot be obtained from file',
+                        default=1.0, type=float)
+    parser.add_argument('--normType', help="Specify how the normalisation is done",
+                        choices=['None', 'Each', 'Combined'], default='Combined')
+    parser.add_argument('--startImageTiming', help="The timing of the first picture, in hours",
+                        type=float, default=0.)
+    parser.add_argument('--endTiming', help="The time of the last picture to plot, in hours",
+                        type=float)
+    parser.add_argument('--percentage', default=1.0, type=float,
+                        help='This precent is to specify the precentage of the picture width to be considered')
+    parser.add_argument('--reMeasure', action='store_true',
+                        help='Force re-measure')
+    parser.add_argument('--diffPos',
+                        nargs='*',
+                        help='''If your plates was moved during experiment, then you need multiple
+                        position files.
+                        This argument allows you to do:
+                        [start file] [positionTsvPath] [start file] [positionTsvPath]...
+                        DO NOT add the first file (start from 0) again.
+                        The START FILE is the file name of the original file name. Check the log file for the old name.
+                        ''')
 
     args = parser.parse_args()
     rootPath = args.rootPath.strip()
     sampleInfoTsvPath = args.sampleInfoTsvPath.strip()
-    outputPath = args.outputPath
-    outputPath = (rootPath if outputPath == None else outputPath.strip())
-    fileExt = f'.{args.inputFmt}'
-    fillBetween = args.noFillBetween
-    timeFromFile = args.noTimeFromFile
-    minMaxNorm = args.minMaxNorm
-    startTiming = args.startTiming
-    if startTiming == -1:
-        startTiming = 0
-    radPrecent = args.radPrecent
-    if radPrecent == 0.:
-        radPrecent = 0.7
+    forceNoFillBetween = args.forceNoFillBetween
+    noTimeFromFile = args.noTimeFromFile
+    imageInterval = args.imageInterval
+    normType = args.normType
+    startImageTiming = args.startImageTiming
+    timeZ = args.endTiming
+    percentage = args.percentage
+    reMeasure = args.reMeasure
+    diffPos = args.diffPos
 
-    dataPickle = os.path.join(outputPath, 'data.pickle')
-    isMeasured = False
-    if os.path.isfile(dataPickle):
-        with open(dataPickle, 'rb') as resultData:
-            allPicsData, startTiming_old, radPrecent_old = pickle.load(resultData)
-            if startTiming == startTiming_old and radPrecent == radPrecent_old:
-                isMeasured = True
-            else:
-                isMeasured = False
-    else:
-        isMeasured = False
-
-    if not os.path.isdir(rootPath):
-        print(f'rootPath {rootPath} does not exist.')
-        raise
-    if not os.path.isfile(sampleInfoTsvPath):
-        print(f'sample information table {sampleInfoTsvPath} does not exist.')
-        raise
+    assert os.path.isdir(rootPath), f'rootPath {rootPath} does not exist.'
+    assert os.path.isfile(sampleInfoTsvPath), f'sample information table {sampleInfoTsvPath} does not exist.'
     sampleInfo = getInfo(sampleInfoTsvPath)
-    folders = sampleInfo.keys()
 
-    if not isMeasured:
-        allPicsData = pd.DataFrame()
+    args_static = [sampleInfo, noTimeFromFile, imageInterval, normType, percentage]
+    allPicsData = pd.DataFrame()
+
+    # Check if dataFile exists
+    measure = True
+    dataPickle = os.path.join(rootPath, 'data.pickle')
+    if not reMeasure and os.path.isfile(dataPickle):
+        if os.stat(dataPickle).st_size > 0:
+            with open(dataPickle, 'rb') as resultData:
+                allPicsData, args_static_old = pickle.load(resultData)
+                if args_static_old == args_static:  # arguments affect measured data
+                    measure = False
+
+    # Read file names from log file
+    renameLogFile = genLogFile(rootPath)
+    oldFiles, newFiles = ([], [])
+    with open(renameLogFile, 'rb') as f:
+        dictOld2New, _, _ = pickle.load(f)
+    for of in dictOld2New:
+        oldFiles.append(of)
+        newFiles.append(dictOld2New[of])
+    # sort oldFiles based on newFiles
+    oldFiles = [f for _, f in sorted(zip(newFiles, oldFiles))]
+    # sort newFiles after oldFiles is sorted
+    newFiles.sort()
+
+    # parse diffPos argument if present
+    diffPosNums = [0, ]
+    diffPosFiles = [sampleInfoTsvPath, ]
+    if diffPos != None:
+        if len(diffPos) % 2 != 0:
+            parser.error('The --diffPos argument requires both number and file')
+        # PARSE args
+        for imgfile, posFile in zip(diffPos[0::2], diffPos[1::2]):
+            if imgfile not in oldFiles:
+                raise ValueError(f'File {imgfile} missing from the original file names')
+            diffPosNums.append(oldFiles.index(imgfile))
+            diffPosFiles.append(posFile)
+
+    if measure:
+
         threadPool = ThreadPoolExecutor(max_workers=8)
         futures = []
-        for folder in folders:
+
+        for folder in sampleInfo:
+            measureType = sampleInfo[folder]['measure']
+            assert measureType in ['centreDisk', 'square', 'polygon'], \
+                f'Error found in sample information file, "measure" should be in [\'centreDisk\', \'square\', \'polygon\'], {measureType} found.'
+
+            polygons = [(0, 0, 1, 0, 0, 1), ]  # polygon initiation for non-polygon measurments
+            if measureType == 'polygon':  # needs to go back to posDict to find location
+
+                # Generate polygon locations
+                polygons = []  # reset this to start with 0
+                for i, (num, positionTsvPath) in enumerate(zip(diffPosNums, diffPosFiles)):
+                    try:
+                        nextGroupStart = diffPosNums[i + 1]
+                    except IndexError:  # reach the end
+                        nextGroupStart = diffPosNums[i] + 1
+                    posDict = getPositions(diffPosFiles[0])
+                    polygon = posDict['Polygon_poly'][folder]
+                    n = nextGroupStart - num
+                    polygons.extend([polygon] * n)
+
+            # Submit measurement to thread pool
             future = threadPool.submit(
-                measureOnePlate,
-                os.path.join(rootPath, folder),
-                minMaxNorm,
-                radPrecent=radPrecent,
-                startTiming=startTiming
+                measureImgs,
+                os.path.join(rootPath, 'subImages', folder),
+                measureType,
+                polygons=polygons,
+                percentage=percentage,
+                forceUseFileNumber=noTimeFromFile
             )
             futures.append(future)
-            print(f'Submited {folder}.')
+            print(f'Submitted {folder} for processing.')
 
+        # Exception handle
         exceptions = [future.exception() for future in futures]
         for i, excep in enumerate(exceptions):
             if excep != None:
                 print(f'There is exception in run index {i}:')
                 print(excep)
                 break
+
         threadPool.shutdown()  # wait for every thread to complete
+
+        # get results
         for future in futures:
-            results = future.result()
-            allPicsData = pd.concat((allPicsData, results), axis=1)
-        if not minMaxNorm:
-            max = allPicsData.max(axis=0).max()
-            for col in allPicsData:
-                allPicsData[col] = allPicsData[col] / max
+            path, data = future.result()
+            posName = os.path.split(path)[-1]
+            # data processing according to arguments
+
+            # rebase time to the first picture (if 3 (hours), then the data will start with 3)
+            # Now the data should be actual hours (after the experimental time zero)
+            data[:, 0] -= (data[:, 0].min() - startImageTiming)
+            # sort on time
+            timeSort = np.argsort(data[:, 0])
+            data = data[timeSort, :]
+            # Normalization
+            if normType == 'Each':
+                # use first 3 hours data as zero point
+                zeroPoint = data[:3, 1].mean()
+                values = data[:, 1] - zeroPoint
+                data[:, 1] = values/values.max()
+
+            # Put into data frame
+            toDf = pd.DataFrame(data[:, 1], index=data[:, 0], columns=[posName])
+            allPicsData = pd.concat((allPicsData, toDf), axis=1)
+
+        if normType == 'Combined':
+            min = allPicsData.iloc[:3].values.mean()  # will convert to nparray and calculate mean of everything
+            values = allPicsData.values - min
+            newData = values/values.max()
+            # put data back
+            allPicsData = pd.DataFrame(newData, index=allPicsData.index, columns=allPicsData.columns)
+
         with open(dataPickle, 'wb') as resultData:
-            pickle.dump([allPicsData, startTiming, radPrecent], resultData)
+            pickle.dump([allPicsData, args_static], resultData)
         allPicsData.to_excel(f'{os.path.splitext(dataPickle)[0]}.xlsx')
-################
-    # groupSequence = [2, 5]  # index of origional sequence, see print out for reference
-    groupSequence = None
-    drawLines = []
-    lineColor = []
-    timeRange = [0, 49]
-    plotMeasured(allPicsData, sampleInfo, fillBetween, outputPath, startTiming=startTiming,
-                 drawLines=drawLines, timeRange=timeRange, groupSequence=groupSequence, lineColor=lineColor)
+
+################# PLOTTING ##############
+
+    # groupSequence = [2, 5]  # index of original sequence, see print out for reference
+    vlines = []
+    vlineColours = []
+    timeRange = (startImageTiming, timeZ)
+    lowerVlines = [24, ]
+    allLevels = [k for k in list(list(sampleInfo.values())[0].keys()) if k not in ['measure', 'colour']]
+    level = allLevels[0]  # use the first one
+
+    #colours = [sampleInfo[s]['colour'].strip() for s in sampleInfo]
 
     # copy this script to outputPath for later references
+    isSatisified = 'n'
+    fig, plotData = (None, None)
+    while isSatisified != 'y':
+        fig, plotData = plotMeasured(allPicsData, sampleInfo, level, forceNoFillBetween,
+                                     vlines=vlines, vlineColours=vlineColours, lowerVlines=lowerVlines, timeRange=timeRange)
+        isSatisified = input("Satisfied with the result? y/n:")
+        if isSatisified == 'y':
+            break
+
+        # Get values for the next plot
+        newVlines = input("Vertical lines? Separate using spaces eg. '24 46 70'\n")
+        try:
+            newVlines = [int(i) for i in newVlines.split()]
+            if len(newVlines) != 0:
+                newVlineColours = input("Colours? Separate using spaces eg. 'k r b'\n")
+                newVlineColours = [c.strip() for c in newVlineColours.split()]
+                assert len(newVlineColours) == len(newVlines)
+                vlines = newVlines
+                vlineColours = newVlineColours
+            newLowerVlines = input("Vertical lines that will plot at bottom? eg. '24 46'\n")
+            try:
+                newLowerVlines = [int(i) for i in newLowerVlines.split()]
+                assert len(newLowerVlines) >= 1
+                lowerVlines = newLowerVlines
+            except:
+                print(f'Lower vertical lines setup failed, use existing {lowerVlines}')
+        except:
+            print(f'Vertical line drawing setup failed, use existing {vlines}')
+        newTimeRange = input("Time range? Separate using spaces eg. '0 72'\n")
+        try:
+            newTimeRange = [float(i) for i in newTimeRange.split()]
+            assert len(newTimeRange) == 2 and newTimeRange[1] > newTimeRange[0]
+            timeRange = newTimeRange
+        except:
+            print(f'Time range setup failed, use existing {timeRange}')
+        newLevel = input(f"New level? {allLevels}\n")
+        try:
+            newLevel = newLevel.strip()
+            assert newLevel in allLevels
+            level = newLevel
+        except:
+            print(f'Level setup failed, use existing {level}')
+
+    resultDir = os.path.join(rootPath, f'result_{datetime.now().strftime("%Y.%m.%d-%H.%M.%S")}')
+    os.mkdir(resultDir)
+    plotData.to_csv(os.path.join(resultDir, 'plotData.tsv'), sep='\t')
+    plotData.to_excel(os.path.join(resultDir, 'plotData.xlsx'))
+    argumentTxt = os.path.join(resultDir, 'arguments.txt')
+    fig.savefig(os.path.join(resultDir, 'figure.svg'))
+    with open(argumentTxt, 'w') as f:
+        f.write(str(args))
+        f.write(f'\n{" ".join([str(i) for i in vlines])}\t# Vertical lines')
+        f.write(f'\n{" ".join(vlineColours)}\t# Vertical line colours')
+        f.write(f'\n{" ".join([str(i) for i in lowerVlines])}\t# Lower vertical lines')
+        f.write(f'\n{" ".join([str(i) for i in timeRange])}\t# Time range')
+        f.write(f'\n{level}\t# Level')
     pathThisScript = os.path.realpath(__file__)
-    isSatisified = input("Satisfied with the result? y/n:")
-    if isSatisified == 'y':
-        plotMeasured(allPicsData, sampleInfo, fillBetween, outputPath,
-                     drawLines=drawLines, timeRange=timeRange, groupSequence=groupSequence, lineColor=lineColor,
-                     isSatisified=True)
-        outputNote = os.path.join(
-            outputPath, f'{datetime.now().strftime("%Y.%m.%d-%H.%M.%S")}.txt')
-        with open(outputNote, 'w') as handle:
-            handle.write(str(args))
-        copy2(pathThisScript, outputPath)
-        # copy2(sampleInfoTsvPath, outputPath)
-        print('Result saved.')
-    else:
-        print('Result ignored')
+    copy2(pathThisScript, resultDir)
+    for f in diffPosFiles:
+        copy2(f, resultDir)
+    pathFuncs = os.path.join(os.path.split(pathThisScript)[0], 'funcs')
+    destFuncs = os.path.join(resultDir, 'funcs')
+    copytree(pathFuncs, destFuncs)
+    print('Result saved.')

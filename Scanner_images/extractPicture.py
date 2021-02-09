@@ -202,17 +202,17 @@ if __name__ == '__main__':
         except IndexError:
             nextGroupStart = len(fileList)
 
-        # Get position info out from allPosDict
-        allPosDict = getPositions(diffPosFiles[0])
-        paddingPos = allPosDict['removePadding']['paddingPos']  # Should equal to None when remove padding is not specified
+        # Get position info out from posDict
+        posDict = getPositions(diffPosFiles[0])
+        paddingPos = posDict['removePadding']['paddingPos']  # Should equal to None when remove padding is not specified
         posToCrop = {}
-        for posType in allPosDict:
-            if posType == 'removePadding':
+        for posType in posDict:
+            if posType in ['removePadding', 'Polygon_poly']:
                 continue
-            if len(allPosDict[posType]) == 0:
+            if len(posDict[posType]) == 0:
                 continue
-            for posName in allPosDict[posType]:
-                position = allPosDict[posType][posName]
+            for posName in posDict[posType]:
+                position = posDict[posType][posName]
                 if useCroppedImg and not locFromCropped: # change to new coordinate
                     position = [x[0]-x[1] for x in zip(position[:4], paddingPos[:2] * 2)]
                 posToCrop[posName] = position
