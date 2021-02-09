@@ -1,3 +1,14 @@
+import traceback
+from concurrent.futures import ThreadPoolExecutor
+import shutil
+import os
+from funcs import crop, getPositions, createFolders, getPosToCrop
+from funcs.changeName import genLogFile  # To get old file name when parsing multiple location data using old file name as reference
+import pickle
+import argparse
+import hashlib
+import sys
+
 import os
 import pickle
 
@@ -9,44 +20,39 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from funcs import getInfo, getPositions, measureImgs, plotMeasured
+from funcs import getInfo, getPositions, measureImgs, plotMeasured, changeFileName
 from funcs.changeName import genLogFile
-
-# TODO
-# - [x] Add colour in the description csv
-# - [x] `change_name` script, make it to recognise unusual names
-# - [x] extractPicture script, need to know which location base comes from: from origin image? or cropped image?
-# - [x] Make the changes of line drawing reflect on the fly (well, return to command line and draw again)
-# - [ ] Make all functions can be called from one script
 
 
 if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,)
-    parser.add_argument('rootPath', help='Path to root dir with sub folders for each plate')
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
+                                     description='')
+    parser.add_argument('rootPath', help='Path to process, with original_images dir')
     parser.add_argument('sampleInfoTsvPath',
                         help='tsv file for sample information, same name will be averaged, when multiple location files are needed, use the first one for this mandatory argument')
-    parser.add_argument('--forceNoFillBetween',
-                        help='fill between stderr if not set',
-                        action='store_true')
-    parser.add_argument('--noTimeFromFile',
-                        help='Time from original file will be used in plotting if not set, else, use the numbers in file name, gapped by --imageInterval',
-                        action='store_true')
-    parser.add_argument('--imageInterval',
-                        help='Hours, only affect if --noTimeFromFile is set or the creation time cannot be obtained from file',
-                        default=1.0, type=float)
-    parser.add_argument('--normType', help="Specify how the normalisation is done",
-                        choices=['None', 'Each', 'Combined'], default='Combined')
-    parser.add_argument('--startImageTiming', help="The timing of the first picture, in hours",
-                        type=float, default=0.)
-    parser.add_argument('--endTiming', help="The time of the last picture to plot, in hours",
-                        type=float)
+    parser.add_argument('--normType', choices=['None', 'Each', 'Combined'], default='Combined',
+                        help="Specify how the normalisation is done",)
+    parser.add_argument('--endTiming', type=float,
+                        help="The time of the last picture to plot, in hours")
     parser.add_argument('--percentage', default=1.0, type=float,
                         help='This precent is to specify the precentage of the picture width to be considered')
+    parser.add_argument('-r', '--resizeFactor', type=float, default=0.35, metavar='FLOAT',
+                        help='Factor of original size (0-1), default 0.35')
+    parser.add_argument('--noTimeFromFile', action='store_true',
+                        help='Time from original file will be stored in all new files if this is not set')
+    parser.add_argument('--locationFromCropped', action='store_true',
+                        help='Set if the locations are measured from images in "cropped_ori" folder. Will only take effect if "original_images" folder is gone.')
+    parser.add_argument('--forceNoFillBetween', action='store_true',
+                        help='fill between stderr if not set')
+    parser.add_argument('--imageInterval', default=1.0, type=float,
+                        help='Hours, only affect if --noTimeFromFile is set or the creation time cannot be obtained from file')
+    parser.add_argument('--startImageTiming', type=float, default=0.,
+                        help="The timing of the first picture, in hours")
+    parser.add_argument('--reExtract', action='store_true',
+                        help='Force re-extract pictures')
     parser.add_argument('--reMeasure', action='store_true',
                         help='Force re-measure')
-    parser.add_argument('--diffPos',
-                        nargs='*',
+    parser.add_argument('--diffPos', nargs='*',
                         help='''If your plates was moved during experiment, then you need multiple
                         position files.
                         This argument allows you to do:
@@ -58,6 +64,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     rootPath = args.rootPath.strip()
     sampleInfoTsvPath = args.sampleInfoTsvPath.strip()
+    resizeFactor = args.resizeFactor
+    locFromCropped = args.locationFromCropped
     forceNoFillBetween = args.forceNoFillBetween
     noTimeFromFile = args.noTimeFromFile
     imageInterval = args.imageInterval
@@ -65,28 +73,16 @@ if __name__ == '__main__':
     startImageTiming = args.startImageTiming
     timeZ = args.endTiming
     percentage = args.percentage
+    reExtract = args.reExtract
     reMeasure = args.reMeasure
     diffPos = args.diffPos
 
     assert os.path.isdir(rootPath), f'rootPath {rootPath} does not exist.'
-    assert os.path.isfile(sampleInfoTsvPath), f'sample information table {sampleInfoTsvPath} does not exist.'
-    sampleInfo = getInfo(sampleInfoTsvPath)
 
-    args_static = [sampleInfo, noTimeFromFile, imageInterval, normType, percentage]
-    allPicsData = pd.DataFrame()
-
-    # Check if dataFile exists
-    measure = True
-    dataPickle = os.path.join(rootPath, 'data.pickle')
-    if not reMeasure and os.path.isfile(dataPickle):
-        if os.stat(dataPickle).st_size > 0:
-            with open(dataPickle, 'rb') as resultData:
-                allPicsData, args_static_old = pickle.load(resultData)
-                if args_static_old == args_static:  # arguments affect measured data
-                    measure = False
-
-    # Read file names from log file
+    # Get file names to crop
     renameLogFile = genLogFile(rootPath)
+    if not os.path.isfile(renameLogFile):
+        changeFileName(rootPath, reverse=False)
     oldFiles, newFiles = ([], [])
     with open(renameLogFile, 'rb') as f:
         dictOld2New, _, _ = pickle.load(f)
@@ -95,21 +91,162 @@ if __name__ == '__main__':
         newFiles.append(dictOld2New[of])
     # sort oldFiles based on newFiles
     oldFiles = [f for _, f in sorted(zip(newFiles, oldFiles))]
-    # sort newFiles after oldFiles is sorted
+    # sort newFIles after oldFiles is sorted
     newFiles.sort()
 
-    # parse diffPos argument if present
+    # If the targets moved during time lapse experiment
     diffPosNums = [0, ]
     diffPosFiles = [sampleInfoTsvPath, ]
+    diffPosFileHashes = []
     if diffPos != None:
         if len(diffPos) % 2 != 0:
             parser.error('The --diffPos argument requires both number and file')
         # PARSE args
         for imgfile, posFile in zip(diffPos[0::2], diffPos[1::2]):
-            if imgfile not in oldFiles:
-                raise ValueError(f'File {imgfile} missing from the original file names')
+            if imgfile in oldFiles:
+                idx = oldFiles.index(imgfile)
+            elif imgfile in newFiles:
+                idx = newFiles.index(imgfile)
+            else:
+                raise ValueError(f'File {imgfile} missing from the original file names ({oldFiles[:5]}...) ({newFiles[:5]}...)')
             diffPosNums.append(oldFiles.index(imgfile))
             diffPosFiles.append(posFile)
+    for f in diffPosFiles:
+        assert os.path.isfile(f), f'sample information table {f} does not exist.'
+        sha1 = hashlib.sha1()
+        with open(f, 'rb') as f:
+            sha1.update(f.read())
+            diffPosFileHashes.append(sha1.hexdigest())
+
+    # correct names can be found in the pickled log file)
+    useCroppedImg = False
+    imgPath = os.path.join(rootPath, 'original_images')
+    if not os.path.isdir(imgPath):
+        imgPath = os.path.join(rootPath, 'cropped_ori')
+        print(f'original_images folder not found, use cropped_ori folder for source images')
+        assert os.path.isdir(imgPath), f'cropped_ori folder not found in {rootPath}.'
+        useCroppedImg = True
+
+    # Compare hashes with previously runs, extract pictures again if not the same
+    # Also consider reExtract argument
+    posFileHashesFile = os.path.join(rootPath, 'Hashes for last measurement metadata files'.replace(' ', '_'))
+    doExtractPics = True
+    extractArgsStatic = [diffPosFileHashes, useCroppedImg, locFromCropped, diffPos]
+    if os.path.isdir(os.path.join(rootPath, 'subImages')) and os.path.isfile(posFileHashesFile) and not reExtract:
+        with open(posFileHashesFile, 'rb') as f:
+            try:
+                extractArgsStatic_old = pickle.load(f)
+                if extractArgsStatic_old == extractArgsStatic:
+                    doExtractPics = False
+            except:
+                pass
+    if doExtractPics:
+        with open(posFileHashesFile, 'wb') as f:
+            pickle.dump(extractArgsStatic, f)
+        reMeasure = True
+
+    # Generate file paths to process
+    if useCroppedImg:
+        fns_exts = [os.path.splitext(f) for f in newFiles]
+        newFiles = [f'{n[0]}_cropped{n[1]}' for n in fns_exts]
+    fileList = [os.path.join(imgPath, f) for f in newFiles]
+
+    # START cropping
+
+    # Get positions from the first metadata file
+    posDict = getPositions(diffPosFiles[0])
+    posToCrop = getPosToCrop(posDict, useCroppedImg, locFromCropped)
+    paddingPos = posDict['removePadding']['paddingPos']  # Should equal to None when remove padding is not specified
+    # Create folder for each sample (posName)
+    targetPaths = {}
+    folders = [os.path.join('subImages', f) for f in list(posToCrop.keys())]
+
+    # Add additional folder for cropped and resized pictures
+    # Resized folder will store resized cropped images
+    if paddingPos != None and not useCroppedImg:
+        folders.append('cropped_ori')
+    folders.append('resized')
+
+    assert len(set(folders)) == len(folders), f'There are duplications in the sample IDs:\n{[i for i in folders if folders.count(i) > 1]}'
+
+    if doExtractPics:
+        print('Clearing existing folders...')
+        for p, _, _ in os.walk(rootPath):
+            if p == rootPath:
+                continue
+            dname = os.path.split(p)[-1]
+            if dname.startswith('result_'):
+                continue
+            if dname == 'original_images':
+                continue
+            if dname == 'cropped_ori' and useCroppedImg == True:
+                continue
+            try:
+                shutil.rmtree(p)
+            except FileNotFoundError:
+                pass
+        print('Creating folders...')
+        targetPaths = createFolders(rootPath, folders, reset=True)
+
+        for i, (num, sampleInfoTsvPath) in enumerate(zip(diffPosNums, diffPosFiles)):
+            try:
+                nextGroupStart = diffPosNums[i + 1]
+            except IndexError:
+                nextGroupStart = len(fileList)
+
+            if i != 0:
+                posDict = getPositions(sampleInfoTsvPath)
+                posToCrop = getPosToCrop(posDict, useCroppedImg, locFromCropped)
+            # Prepare cropping files
+            print(f'Cropping group {i+1}/{len(diffPosNums)}...')
+            subFileList = fileList[diffPosNums[i]:nextGroupStart]
+            # RUN. Submit cropping threads
+            filePathList = [os.path.join(imgPath, file) for file in subFileList]
+            threadPool = ThreadPoolExecutor(max_workers=os.cpu_count())
+            futures = []
+            for i, file in enumerate(filePathList):
+                future = threadPool.submit(
+                    crop, file, posToCrop, targetPaths,
+                    paddingPos=paddingPos,
+                    resizeFactor=resizeFactor,
+                    useFileTime=not noTimeFromFile,
+                )
+                print(f'Submitted {i}: {os.path.split(file)[-1]}')
+                if i == 0:
+                    exception = future.exception()
+                    # this will wait the first implementation to finish, and check if
+                    # any exception happened
+                    if exception != None:
+                        print('There is exception in the first implementation:')
+                        traceback.print_tb(exception.__traceback__)
+                        print(exception.__class__, exception)
+                        exit()
+                futures.append(future)
+            print('All images submitted for cropping and creating subimages! Waiting for finish.')
+            exceptions = [future.exception() for future in futures]
+            for i, exception in enumerate(exceptions):
+                if exception != None:
+                    print(f'There is exception in run index {i}:')
+                    traceback.print_tb(exception.__traceback__)
+                    print(type(exception), exception)
+                    break
+            threadPool.shutdown()
+        print('Finished!')
+
+    # Check if dataFile exists and arguments are the same as previous
+    measureArgsStatic = [diffPosNums, diffPosFileHashes, noTimeFromFile, imageInterval, normType, percentage]
+    allPicsData = pd.DataFrame()
+    measure = True
+    dataPickle = os.path.join(rootPath, 'data.pickle')
+    if not reMeasure and os.path.isfile(dataPickle):
+        if os.stat(dataPickle).st_size > 0:
+            with open(dataPickle, 'rb') as resultData:
+                oldAllPicsData, measureArgsStatic_old = pickle.load(resultData)
+                if measureArgsStatic_old == measureArgsStatic:  # arguments affect measured data
+                    measure = False
+                    allPicsData = oldAllPicsData
+
+    sampleInfo = getInfo(diffPosFiles[0])  # will be used in both
 
     if measure:
 
@@ -126,7 +263,7 @@ if __name__ == '__main__':
 
                 # Generate polygon locations
                 polygons = []  # reset this to start with 0
-                for i, (num, positionTsvPath) in enumerate(zip(diffPosNums, diffPosFiles)):
+                for i, (num, sampleInfoTsvPath) in enumerate(zip(diffPosNums, diffPosFiles)):
                     try:
                         nextGroupStart = diffPosNums[i + 1]
                     except IndexError:  # reach the end
@@ -143,10 +280,11 @@ if __name__ == '__main__':
                 measureType,
                 polygons=polygons,
                 percentage=percentage,
-                forceUseFileNumber=noTimeFromFile
+                forceUseFileNumber=noTimeFromFile,
+                fileNumberTimeInterval=imageInterval
             )
             futures.append(future)
-            print(f'Submitted {folder} for processing.')
+            print(f'Submitted {folder} for greyness measurement.')
 
         # Exception handle
         exceptions = [future.exception() for future in futures]
@@ -189,7 +327,7 @@ if __name__ == '__main__':
             allPicsData = pd.DataFrame(newData, index=allPicsData.index, columns=allPicsData.columns)
 
         with open(dataPickle, 'wb') as resultData:
-            pickle.dump([allPicsData, args_static], resultData)
+            pickle.dump([allPicsData, measureArgsStatic], resultData)
         allPicsData.to_excel(f'{os.path.splitext(dataPickle)[0]}.xlsx')
 
 ################# PLOTTING ##############
@@ -255,6 +393,7 @@ if __name__ == '__main__':
     argumentTxt = os.path.join(resultDir, 'arguments.txt')
     fig.savefig(os.path.join(resultDir, 'figure.svg'))
     with open(argumentTxt, 'w') as f:
+        f.write('python3 ' + ' '.join(sys.argv) + '\n\n')
         f.write(str(args))
         f.write(f'\n{" ".join([str(i) for i in vlines])}\t# Vertical lines')
         f.write(f'\n{" ".join(vlineColours)}\t# Vertical line colours')

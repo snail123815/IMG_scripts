@@ -84,11 +84,15 @@ def determinePrefixExtension(path):
             totalNum - number of files with the prefix and extension
             digits - number of digits of the numbering needed (for downstream zfill)
     """
+    filesFolders = os.listdir(path)
+    if 'original_images' in filesFolders:
+        path = os.path.join(path, 'original_images')
+        filesFolders = os.listdir(path)
     extension = determineExtension(path)
     # find prefix
     prefixList = []
     totalNum = 0
-    for file in os.listdir(path):
+    for file in filesFolders:
         name, ext = os.path.splitext(file)
         if ext == extension:
             totalNum += 1
@@ -272,7 +276,7 @@ def changeToOld(path, dictOld2New, dictOldScanTime):
 # changeToOld
 
 
-def changeFileName(path):
+def changeFileName(path, reverse=True):
     """Wraper changeToNew() and changeToOld()
 
     Args:
@@ -287,10 +291,10 @@ def changeFileName(path):
     if os.path.isfile(logFile):
         with open(logFile, 'rb') as f:
             dictOld2New, dictOldScanTime, isNew = pickle.load(f)
-        if not isNew:
-            changeToNew(path, dictOld2New, dictOldScanTime)
-        else:  # then we need to change back
+        if isNew and reverse:
             changeToOld(path, dictOld2New, dictOldScanTime)
+        else:  # then we need to change back
+            changeToNew(path, dictOld2New, dictOldScanTime)
     else:
         dictOld2New = {}
         dictOldScanTime = {}

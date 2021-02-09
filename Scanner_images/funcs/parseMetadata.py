@@ -127,3 +127,19 @@ def getPositions(positionTsvPath):
         posDict['removePadding']['paddingPos'] = None
     return posDict
 # getPositions
+
+
+def getPosToCrop(posDict, useCroppedImg=False, locFromCropped=False):
+    posToCrop = {}
+    for posType in posDict:
+        if posType in ['removePadding', 'Polygon_poly']:
+            continue
+        if len(posDict[posType]) == 0:
+            continue
+        for posName in posDict[posType]:
+            position = posDict[posType][posName]
+            if useCroppedImg and not locFromCropped:  # change to new coordinate
+                paddingPos = posDict['removePadding']['paddingPos']
+                position = [x[0]-x[1] for x in zip(position[:4], paddingPos[:2] * 2)]
+            posToCrop[posName] = position
+    return posToCrop

@@ -5,6 +5,22 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: extractPicAndMeasure.py",
+            "type": "python",
+            "request": "launch",
+            "program": "extractPicAndMeasure.py",
+            "console": "integratedTerminal",
+            "args": [
+                "/Users/duc/Downloads/rag_JA_MeJA",
+                "/Users/duc/Downloads/rag_JA_MeJA/extractPicture_PositionsAndInfo.txt",
+                //"--locationFromCropped",
+                //"--reMeasure",
+                //"--percentage", "0.1",
+                //"--noTimeFromFile",
+                //"--imageInterval", "2",
+            ]
+        },
+        {
             "name": "Python: measure_gray",
             "type": "python",
             "request": "launch",
