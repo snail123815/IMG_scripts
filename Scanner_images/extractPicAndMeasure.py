@@ -94,7 +94,8 @@ if __name__ == '__main__':
     # sort newFIles after oldFiles is sorted
     newFiles.sort()
 
-    # If the targets moved during time lapse experiment
+    # If the targets moved during time lapse experiment, you might need to specify different
+    # metadata files for the moved location
     diffPosNums = [0, ]
     diffPosFiles = [sampleInfoTsvPath, ]
     diffPosFileHashes = []
@@ -168,6 +169,8 @@ if __name__ == '__main__':
     folders.append('resized')
 
     assert len(set(folders)) == len(folders), f'There are duplications in the sample IDs:\n{[i for i in folders if folders.count(i) > 1]}'
+
+    ################# EXTRACT PICTURES #########################################################
 
     if doExtractPics:
         print('Clearing existing folders...')
@@ -246,7 +249,10 @@ if __name__ == '__main__':
                     measure = False
                     allPicsData = oldAllPicsData
 
-    sampleInfo = getInfo(diffPosFiles[0])  # will be used in both
+    sampleInfo = getInfo(diffPosFiles[0])  # will be used in both measurement and plotting
+    ################# EXTRACT PICTURES DONE #########################################################
+
+    ################# MEASUREMENT #########################################################
 
     if measure:
 
@@ -329,8 +335,9 @@ if __name__ == '__main__':
         with open(dataPickle, 'wb') as resultData:
             pickle.dump([allPicsData, measureArgsStatic], resultData)
         allPicsData.to_excel(f'{os.path.splitext(dataPickle)[0]}.xlsx')
+    ################# MEASUREMENT DONE #########################################################
 
-################# PLOTTING ##############
+    ################# PLOTTING #########################################################
 
     # groupSequence = [2, 5]  # index of original sequence, see print out for reference
     vlines = []
@@ -386,6 +393,9 @@ if __name__ == '__main__':
         except:
             print(f'Level setup failed, use existing {level}')
 
+    ################# PLOTTING DONE #########################################################
+
+    ################# Save figure and log #########################################################
     resultDir = os.path.join(rootPath, f'result_{datetime.now().strftime("%Y.%m.%d-%H.%M.%S")}')
     os.mkdir(resultDir)
     plotData.to_csv(os.path.join(resultDir, 'plotData.tsv'), sep='\t')
