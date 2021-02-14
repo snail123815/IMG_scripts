@@ -1,13 +1,14 @@
-from funcs import getScanTime, determineExtension
 import numpy as np
 import os
+import re
+
 from skimage import draw
 from skimage.io import imread
 
-import re
+from funcs import getScanTime, determineExtension
 
 
-def measureImgs(path, measureType='centreDisk', polygons=[(0, 0, 1, 0, 0, 1), ], percentage=1.0, forceUseFileNumber=False,fileNumberTimeInterval=1) -> np.ndarray:
+def measureImgs(path, measureType='centreDisk', polygons=[(0, 0, 1, 0, 0, 1), ], percentage=1.0, forceUseFileNumber=False, fileNumberTimeInterval=1) -> np.ndarray:
     """Measure all images in path\n
     Return a numpy array of shape (len(files), 2).\n
 
@@ -70,7 +71,6 @@ def measureImgs(path, measureType='centreDisk', polygons=[(0, 0, 1, 0, 0, 1), ],
         firstInterval = times[1] - times[0]
         if firstInterval < 300:
             useFileTime = False
-
 
     # Measurement: produce an array of times and an array of measured values
     data = np.zeros((len(filePaths), 2))

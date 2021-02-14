@@ -1,5 +1,5 @@
-from PIL import Image
 import os
+from PIL import Image
 from funcs import getScanTime
 
 def crop(picPath, posDict, targetPaths, paddingPos=None, resizeFactor=None, useFileTime=True):

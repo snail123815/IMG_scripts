@@ -1,6 +1,7 @@
 import codecs  # for possible unicode character, not fully tested
-import numpy as np
 from collections import OrderedDict
+
+import numpy as np
 
 def getInfo(sampleInfoTsvPath):
     """Parse only the sampleInfo part of the file

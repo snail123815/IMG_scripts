@@ -1,10 +1,9 @@
 from collections import OrderedDict
 from itertools import cycle
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-import os
-from datetime import datetime
 
 
 def drawVLines(ax, li, cl, lowerVlines=[24,]):
