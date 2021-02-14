@@ -16,10 +16,10 @@ After renaming the files, put files in `original_images` folder
 
 
 import os
-import pickle
-import platform
-from datetime import datetime
 import re
+import pickle
+#import platform
+from datetime import datetime
 
 def determineExtension(path):
     """Find the most representative file extension in this dir
@@ -141,15 +141,12 @@ def getScanTime(filePath):
 
     Returns:
         timeCreation: 
-            On Windows system:
-                os.stat(filePath).st_mtime
-            On Mac and linux:
-                os.path.getctime(filePath)
+            os.path.getctime(filePath)
     """
-    if platform.system() == 'Windows':
-        timeCreation = os.path.getctime(filePath)
-    else:
-        timeCreation = os.stat(filePath).st_mtime
+    #if platform.system() == 'Windows':
+    #    timeCreation = os.path.getctime(filePath)
+    #else:
+    timeCreation = os.stat(filePath).st_mtime
     return timeCreation
 # getScanTime
 
