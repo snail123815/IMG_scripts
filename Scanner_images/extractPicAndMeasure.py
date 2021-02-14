@@ -1,27 +1,19 @@
 import traceback
-from concurrent.futures import ThreadPoolExecutor
-import shutil
 import os
-from funcs import crop, getPositions, createFolders, getPosToCrop
-from funcs.changeName import genLogFile  # To get old file name when parsing multiple location data using old file name as reference
 import pickle
 import argparse
 import hashlib
 import sys
-
-import os
-import pickle
-
 from datetime import datetime
-from shutil import copy2, copytree
+from shutil import copy2, copytree, rmtree
 from concurrent.futures import ThreadPoolExecutor
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from funcs import getInfo, getPositions, measureImgs, plotMeasured, changeFileName
-from funcs.changeName import genLogFile
+from funcs import crop, getPositions, createFolders, getPosToCrop
+from funcs import getInfo, measureImgs, plotMeasured, changeFileName
+from funcs.changeName import genLogFile  # To get old file name when parsing multiple location data using old file name as reference
 
 
 if __name__ == '__main__':
@@ -77,6 +69,9 @@ if __name__ == '__main__':
     reMeasure = args.reMeasure
     diffPos = args.diffPos
 
+    # convert to realpath in case of failure in some systems 1/2
+    rootPath = os.path.realpath(rootPath)
+
     assert os.path.isdir(rootPath), f'rootPath {rootPath} does not exist.'
 
     # Get file names to crop
@@ -112,6 +107,8 @@ if __name__ == '__main__':
                 raise ValueError(f'File {imgfile} missing from the original file names ({oldFiles[:5]}...) ({newFiles[:5]}...)')
             diffPosNums.append(oldFiles.index(imgfile))
             diffPosFiles.append(posFile)
+    # convert to realpath in case of failure in some systems 2/2
+    diffPosFiles = [os.path.realpath(f) for f in diffPosFiles]
     for f in diffPosFiles:
         assert os.path.isfile(f), f'sample information table {f} does not exist.'
         sha1 = hashlib.sha1()
@@ -185,7 +182,7 @@ if __name__ == '__main__':
             if dname == 'cropped_ori' and useCroppedImg == True:
                 continue
             try:
-                shutil.rmtree(p)
+                rmtree(p)
             except FileNotFoundError:
                 pass
         print('Creating folders...')
@@ -411,10 +408,16 @@ if __name__ == '__main__':
         f.write(f'\n{" ".join([str(i) for i in timeRange])}\t# Time range')
         f.write(f'\n{level}\t# Level')
     pathThisScript = os.path.realpath(__file__)
-    copy2(pathThisScript, resultDir)
     for f in diffPosFiles:
         copy2(f, resultDir)
     pathFuncs = os.path.join(os.path.split(pathThisScript)[0], 'funcs')
     destFuncs = os.path.join(resultDir, 'funcs')
-    copytree(pathFuncs, destFuncs)
+    try:
+        copy2(pathThisScript, resultDir)
+    except FileNotFoundError:
+        print(f'Plain python script file {pathThisScript} not found.')
+    try:
+        copytree(pathFuncs, destFuncs)
+    except FileNotFoundError:
+        print(f'Sub-modules folder {pathFuncs} not found.')
     print('Result saved.')
