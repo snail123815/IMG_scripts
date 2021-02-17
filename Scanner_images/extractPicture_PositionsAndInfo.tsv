@@ -20,8 +20,7 @@ TwoPositions	x1	y1	x2	y2
 # 'Plugins' -> 'Marcos' -> 'Record...'
 Polygon	makePolygon();
 					
-END
-# Location parse will stop here
+END_POSITION # Location parse will stop here. DO NOT DELETE THIS LINE
 
 # measure in ['centreDisk', 'square', 'polygon']
 # colour will be default if empty
@@ -34,4 +33,5 @@ TR	M145_MeJA	centreDisk	lightsalmon
 BL	Δrag_MM	centreDisk	darkblue
 MR	Δrag_JA	centreDisk	royalblue
 ML	Δrag_MeJA	centreDisk	lightsteelblue
-end_info
+
+END_INFO # DO NOT DELETE THIS LINE
