@@ -79,7 +79,9 @@ def measureImgs(path, measureType='centreDisk', polygons=[(0, 0, 1, 0, 0, 1), ],
             time = getScanTime(filePath)/3600  # convert to hours
         else:
             file = os.path.split(filePath)[1]
-            oriImgName = file.split('_cropped')[0]
+            # Temove text before the last '_' (this should be subimages, the added posName needs removal)
+            oriImgName = file.replace(file.split('_')[-1], '')[:-1]
+            oriImgName = oriImgName.split('_cropped')[0] # when use cropped is true
             n = int(re.findall(r'[0-9]+', oriImgName)[-1])
             time = n * fileNumberTimeInterval
         im = imread(filePath, as_gray=True)
