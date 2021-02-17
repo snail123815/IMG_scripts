@@ -13,7 +13,7 @@ def getInfo(sampleInfoTsvPath):
     4	Δrag_JA	circle	royalblue		
     5	Δrag_MM	circle	darkblue 		
     6	M145_JA	circle	tomato		
-    end_info					
+    END_INFO # DO NOT DELETE THIS LINE									
 
     Args:
         sampleInfoTsvPath (str): metadata tsv file
@@ -26,14 +26,16 @@ def getInfo(sampleInfoTsvPath):
         infoStarted = False
         sampleInfoHeader = []
         for line in posFile.readlines():
-            if not infoStarted and not line.startswith('sampleInfo'):
+            if line.startswith('#') or len(line) == 0 or line.startswith('"#') :
                 continue
+            if not infoStarted and not line.startswith('sampleInfo'): continue
             elements = [elem.strip() for elem in line.split('\t')]
             for i, e in enumerate(elements):
                 if e.startswith('"') and e.endswith('"'):
                     elements[i] = e[1:-1]
             elements = [elem for elem in elements if elem != '']
             elements = [elem for elem in elements if not elem.startswith('#')]
+            if len(elements) == 0: continue
             if elements[0] == 'sampleInfo':
                 infoStarted = True
                 sampleInfoHeader = [e for e in elements[1:]]
@@ -41,11 +43,15 @@ def getInfo(sampleInfoTsvPath):
             if not infoStarted:
                 continue
             posName = elements[0]
-            if posName == 'end_info':
+            if posName.startswith('END_INFO'):
                 break
             sampleInfo[posName] = OrderedDict()
             for i, infoType in enumerate(sampleInfoHeader):
-                sampleInfo[posName][infoType] = elements[i + 1]
+                try:
+                    e = elements[i + 1]
+                except IndexError:
+                    e = None
+                sampleInfo[posName][infoType] = e
     return sampleInfo
 
 
@@ -62,7 +68,8 @@ def getPositions(positionTsvPath):
     WidthHeight    x      y      Width  Height  # upper left and lower right positions
     removePadding  52     360    2448   3080    # include this line if you need to remove certain padding
     TwoPositions   x1     y1     x2     y2
-    end                                         # parse will stop here
+
+    END_POSITION # Location parse will stop here. DO NOT DELETE THIS LINE	
 
     Args:
         positionTsvPath ([type]): [description]
@@ -75,10 +82,13 @@ def getPositions(positionTsvPath):
     locType = ''
     with open(positionTsvPath, 'r') as posFile:
         for line in posFile.readlines():
-            if line.startswith('#') or len(line) == 0:
+            if line.startswith('#') or len(line) == 0 or line.startswith('"#') :
                 continue
             elements = [e.strip() for e in line.split('\t')]
-            if elements[0] == 'END':
+            for i, e in enumerate(elements):
+                if e.startswith('"') and e.endswith('"'):
+                    elements[i] = e[1:-1]
+            if elements[0].startswith('END_POSITION'):
                 break
             elements = [e for e in elements if e != '' and not e.startswith('#')]
             if len(elements) == 0:
