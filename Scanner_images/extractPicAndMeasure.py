@@ -149,8 +149,6 @@ if __name__ == '__main__':
         newFiles = [f'{n[0]}_cropped{n[1]}' for n in fns_exts]
     fileList = [os.path.join(imgPath, f) for f in newFiles]
 
-    # START cropping
-
     # Get positions from the first metadata file
     posDict = getPositions(diffPosFiles[0])
     posToCrop = getPosToCrop(posDict, useCroppedImg, locFromCropped)
@@ -166,6 +164,13 @@ if __name__ == '__main__':
     folders.append('resized')
 
     assert len(set(folders)) == len(folders), f'There are duplications in the sample IDs:\n{[i for i in folders if folders.count(i) > 1]}'
+
+    # See if the previous picture extraction has resulted any file (avoid empty measurment)
+    firstSubFolder = os.path.join(rootPath,folders[0])
+    if os.path.isdir(firstSubFolder):
+        if not len(os.listdir(firstSubFolder)) > 2:
+            doExtractPics = True
+        pass
 
     ################# EXTRACT PICTURES #########################################################
 
@@ -234,7 +239,7 @@ if __name__ == '__main__':
         print('Finished!')
 
     # Check if dataFile exists and arguments are the same as previous
-    measureArgsStatic = [diffPosNums, diffPosFileHashes, noTimeFromFile, imageInterval, normType, percentage]
+    measureArgsStatic = [diffPosNums, diffPosFileHashes, noTimeFromFile, imageInterval, startImageTiming, normType, percentage]
     allPicsData = pd.DataFrame()
     measure = True
     dataPickle = os.path.join(rootPath, 'data.pickle')
