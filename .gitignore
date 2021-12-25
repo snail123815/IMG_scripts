@@ -5,3 +5,4 @@
 
 Scanner_images/Binaries/*
 *.spec
+.vscode
